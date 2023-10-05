@@ -718,7 +718,7 @@ class Object:
     Represents a spawned Object in the BulletWorld.
     """
 
-    def __init__(self, name: str, type: str, path: str,
+    def __init__(self, name: str, type: str, path: str, size: str = "Normal",
                  pose: Pose = None,
                  world: BulletWorld = None,
                  color: Optional[List[float]] = [1, 1, 1, 1],
@@ -742,6 +742,7 @@ class Object:
         self.local_transformer = LocalTransformer()
         self.name: str = name
         self.type: str = type
+        self.size: str = size
         self.color: List[float] = color
         pose_in_map = self.local_transformer.transform_pose(pose, "map")
         position, orientation = pose_in_map.to_list()
@@ -757,7 +758,7 @@ class Object:
         # This means "world" is not the shadow world since it has a reference to a shadow world
         if self.world.shadow_world != None:
             self.world.world_sync.add_obj_queue.put(
-                [name, type, path, position, orientation, self.world.shadow_world, color, self])
+                [name, type, path, size, position, orientation, self.world.shadow_world, color, self])
 
         with open(self.path) as f:
             self.urdf_object = URDF.from_xml_string(f.read())
