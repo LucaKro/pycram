@@ -450,9 +450,9 @@ class WorldSync(threading.Thread):
             for i in range(self.add_obj_queue.qsize()):
                 obj = self.add_obj_queue.get()
                 # [name, type, path, position, orientation, self.world.shadow_world, color, bulletworld object]
-                o = Object(obj[0], obj[1], obj[2], Pose(obj[3], obj[4]), obj[5], obj[6])
+                o = Object(obj[0], obj[1], obj[2], Pose(obj[3], obj[4]), obj[5], obj[6], obj[7])
                 # Maps the BulletWorld object to the shadow world object
-                self.object_mapping[obj[7]] = o
+                self.object_mapping[obj[8]] = o
                 self.add_obj_queue.task_done()
             for i in range(self.remove_obj_queue.qsize()):
                 obj = self.remove_obj_queue.get()
@@ -718,10 +718,11 @@ class Object:
     Represents a spawned Object in the BulletWorld.
     """
 
-    def __init__(self, name: str, type: str, path: str, size: str = "Normal",
+    def __init__(self, name: str, type: str, path: str,
                  pose: Pose = None,
                  world: BulletWorld = None,
                  color: Optional[List[float]] = [1, 1, 1, 1],
+                 size: str = "Normal",
                  ignoreCachedFiles: Optional[bool] = False):
         """
         The constructor loads the urdf file into the given BulletWorld, if no BulletWorld is specified the
@@ -758,7 +759,8 @@ class Object:
         # This means "world" is not the shadow world since it has a reference to a shadow world
         if self.world.shadow_world != None:
             self.world.world_sync.add_obj_queue.put(
-                [name, type, path, size, position, orientation, self.world.shadow_world, color, self])
+                [name, type, path, position, orientation, self.world.shadow_world, color, size,
+                self])
 
         with open(self.path) as f:
             self.urdf_object = URDF.from_xml_string(f.read())
