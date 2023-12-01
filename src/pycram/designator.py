@@ -16,6 +16,7 @@ from time import time
 from typing import List, Dict, Any, Type, Optional, Union, get_type_hints, Callable, Tuple, Iterable
 
 from .local_transformer import LocalTransformer
+from .language import Language
 from .pose import Pose
 from .robot_descriptions import robot_description
 
