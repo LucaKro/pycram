@@ -2,11 +2,15 @@ import rospy
 from speech_processing.msg import message_to_robot, message_from_robot, message_objects_in_use, dict_object
 from time import time
 
+from pycram.fluent import whenever, Fluent
+from pycram.language import failure_handling
+from pycram.plan_failures import SustainedFailure
+
 
 class InterruptClient:
     def __init__(self):
 
-        rospy.init_node('nlp_node')
+        # rospy.init_node('nlp_node')
 
         self.nlp_frequency = 10.0
         self.nlp_timestamp = 0.0
@@ -81,4 +85,8 @@ class InterruptClient:
 
 if __name__ == "__main__":
     nlp_node = InterruptClient()
+    retries = 5
+    with whenever(Fluent()):
+        print("x")
+
     rospy.spin()
