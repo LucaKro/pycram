@@ -460,7 +460,7 @@ class MotionDesignatorDescription(DesignatorDescription, Language):
             raise ResolutionError(missing, wrong_type, current_type, desig)
 
 
-class ActionDesignatorDescription(DesignatorDescription):
+class ActionDesignatorDescription(DesignatorDescription, Language):
     """
     Abstract class for action designator descriptions.
     Descriptions hold possible parameter ranges for action designators.
@@ -535,7 +535,8 @@ class ActionDesignatorDescription(DesignatorDescription):
             return action
 
     def __init__(self, resolver=None):
-        super(ActionDesignatorDescription, self).__init__(resolver)
+        super().__init__(resolver)
+        Language.__init__(self)
 
     def ground(self) -> Action:
         """Fill all missing parameters and chose plan to execute. """
