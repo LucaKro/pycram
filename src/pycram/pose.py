@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import copy
 import math
+import datetime
 from typing import List, Union, Optional
 
 import numpy as np
 import rospy
+import sqlalchemy.orm
 from geometry_msgs.msg import PoseStamped, TransformStamped, Vector3
 from geometry_msgs.msg import (Pose as GeoPose, Quaternion as GeoQuaternion)
 from std_msgs.msg import Header
 from tf import transformations
+from .orm.base import Pose as ORMPose, Position, Quaternion, ProcessMetaData
 
 
 class Pose(PoseStamped):
@@ -51,6 +54,19 @@ class Pose(PoseStamped):
         self.header.stamp = time if time else rospy.Time.now()
 
         self.frame = frame
+
+    @staticmethod
+    def from_pose_stamped(pose_stamped: PoseStamped) -> Pose:
+        """
+        Converts a geometry_msgs/PoseStamped message to a Pose object. Should be used for compatability with ROS.
+
+        :param pose_stamped: The pose stamped message which should be converted
+        :return: A Pose object with the same information as the given message
+        """
+        p = Pose()
+        p.header = pose_stamped.header
+        p.pose = pose_stamped.pose
+        return p
 
     @property
     def frame(self) -> str:
@@ -218,6 +234,31 @@ class Pose(PoseStamped):
         """
         self.orientation = new_orientation
 
+    def to_sql(self) -> ORMPose:
+        return ORMPose(datetime.datetime.utcfromtimestamp(self.header.stamp.to_sec()), self.frame)
+
+    def insert(self, session: sqlalchemy.orm.Session) -> ORMPose:
+
+        metadata = ProcessMetaData().insert(session)
+
+        position = Position(*self.position_as_list())
+        position.process_metadata_id = metadata.id
+        orientation = Quaternion(*self.orientation_as_list())
+        orientation.process_metadata_id = metadata.id
+
+        session.add(position)
+        session.add(orientation)
+        session.commit()
+        pose = self.to_sql()
+        pose.process_metadata_id = metadata.id
+        pose.position_id = position.id
+        pose.orientation_id = orientation.id
+
+        session.add(pose)
+        session.commit()
+
+        return pose
+
 
 class Transform(TransformStamped):
     """
@@ -259,6 +300,22 @@ class Transform(TransformStamped):
         self.header.stamp = time if time else rospy.Time.now()
 
         self.frame = frame
+
+    @staticmethod
+    def from_transform_stamped(transform_stamped: TransformStamped) -> Transform:
+        """
+        Creates a Transform instance from a geometry_msgs/TransformStamped message. Should be used for compatibility with
+        ROS.
+
+        :param transform_stamped: The transform stamped message that should be converted
+        :return: An Transform with the same information as the transform stamped message
+        """
+        t = Transform()
+        t.header = transform_stamped.header
+        t.child_frame_id = transform_stamped.child_frame_id
+        t.transform = transform_stamped.transform
+
+        return t
 
     @property
     def frame(self) -> str:
