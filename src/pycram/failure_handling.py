@@ -1,7 +1,12 @@
+from threading import Lock
+from typing import Union
+
 from .designator import DesignatorDescription
+from .language import Language, Monitor
 from .plan_failures import PlanFailure
 
-class FailureHandling:
+
+class FailureHandling(Language):
     """
     Base class for failure handling mechanisms in automated systems or workflows.
 
@@ -16,7 +21,7 @@ class FailureHandling:
         perform(): Abstract method
     """
 
-    def __init__(self, designator_description:DesignatorDescription):
+    def __init__(self, designator_description: Union[DesignatorDescription, Monitor]):
         """
         Initializes a new instance of the FailureHandling class.
 
@@ -38,6 +43,7 @@ class FailureHandling:
         """
         raise NotImplementedError()
 
+
 class Retry(FailureHandling):
     """
     A subclass of FailureHandling that implements a retry mechanism.
@@ -55,7 +61,7 @@ class Retry(FailureHandling):
         perform(): Implements the retry logic.
     """
 
-    def __init__(self, designator_description:DesignatorDescription, max_tries:int=3):
+    def __init__(self, designator_description: DesignatorDescription, max_tries: int = 3):
         """
         Initializes a new instance of the Retry class.
 
@@ -89,5 +95,86 @@ class Retry(FailureHandling):
                     raise e
 
 
+class RetryMonitor(FailureHandling):
+    """
+    A subclass of FailureHandling that implements a retry mechanism that works with a Monitor.
 
+    This class represents a specific failure handling strategy that allows us to retry a demo that is
+    being monitored, in case that monitoring condition is triggered.
 
+    Attributes:
+        max_tries (int): The maximum number of attempts to retry the action.
+
+    Inherits:
+        All attributes and methods from the FailureHandling class.
+
+    Overrides:
+        perform(): Implements the retry logic.
+    """
+
+    def __init__(self, designator_description: Monitor, max_tries: int = 3, recovery: Language = None):
+        """
+        Initializes a new instance of the Retry class.
+
+        Args:
+            designator_description (DesignatorDescription): The description or context
+            of the task or process for which the retry mechanism is being set up.
+            max_tries (int, optional): The maximum number of attempts to retry. Defaults to 3.
+        """
+        super().__init__(designator_description)
+        self.max_tries = max_tries
+        self.recovery = recovery
+        self.lock = Lock()
+
+    def perform(self):
+        """
+        Implementation of the retry mechanism.
+
+        This method attempts to perform the Monitor + plan specified in the designator_description.
+        If the action fails, it is retried up to max_tries times. If all attempts fail,
+        the last exception is raised. In every loop, we need to clear the kill_event, and set all
+        relevant 'interrupted' variables to False, to make sure the Monitor and plan are executed
+        properly again
+
+        Raises:
+            PlanFailure: If all retry attempts fail.
+
+        Returns:
+            The state of the execution performed, as well as a flattened list of the results, in the correct order
+        """
+
+        def reset_interrupted(child):
+            if hasattr(child, "interrupted"):
+                child.interrupted = False
+            for sub_child in getattr(child, "children", []):
+                reset_interrupted(sub_child)
+
+        def flatten(result):
+            flattened_list = []
+            for item in result:
+                if isinstance(item, list):
+                    flattened_list.extend(item)
+                elif isinstance(item, tuple):
+                    flattened_list.append(item)
+                else:
+                    flattened_list.append(item)
+            return flattened_list
+
+        status, res = None, None
+        with self.lock:
+            tries = 0
+            while True:
+                self.designator_description.kill_event.clear()
+                self.designator_description.interrupted = False
+                for child in self.designator_description.children:
+                    reset_interrupted(child)
+                try:
+                    status, res = self.designator_description.perform()
+                    break
+                except PlanFailure as e:
+                    tries += 1
+                    if tries >= self.max_tries:
+                        raise e
+                    if self.recovery:
+                        self.recovery.perform()
+        return status, flatten(res)

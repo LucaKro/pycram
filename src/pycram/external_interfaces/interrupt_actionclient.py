@@ -2,19 +2,17 @@ import rospy
 from speech_processing.msg import message_to_robot, message_from_robot, message_objects_in_use, dict_object
 from time import time
 
-from pycram.fluent import whenever, Fluent
-from pycram.language import failure_handling
-from pycram.plan_failures import SustainedFailure
+from pycram.fluent import Fluent
 
 
 class InterruptClient:
     def __init__(self):
+        self.minor_interrupt = Fluent()
 
         # rospy.init_node('nlp_node')
-
         self.nlp_frequency = 10.0
         self.nlp_timestamp = 0.0
-        self.command_queue = []
+        self.command_queue = Fluent(value=[])
         self.objects_in_use = []
 
         # Initialize subscribers
@@ -44,14 +42,20 @@ class InterruptClient:
                 }
             }
             self.modify_objects_in_use(interruption_msg.add_object, interruption_msg.del_object)
-            self.command_queue.append(command_data)
+            self.command_queue.get_value().append(command_data)
+            self.command_queue.pulse()
+            self.minor_interrupt.set_value(True)
+            print(self.command_queue.get_value())
             self.nlp_timestamp = current_time
 
     def next_command(self):
         if self.command_queue:
-            return self.command_queue.pop(0)
+            return self.command_queue.get_value().pop(0)
         else:
             return None
+
+    def get_objects_in_use(self):
+        return self.objects_in_use
 
     def publish_from_robot(self, step, interruptable, object_info, move_arm, move_base, current_location,
                            destination_location):
@@ -79,14 +83,16 @@ class InterruptClient:
 
         [self.objects_in_use.append(obj) for obj in add_object_info if obj not in self.objects_in_use]
         [self.objects_in_use.remove(obj) for obj in remove_object_info if obj in self.objects_in_use]
+        print("minor interrupt")
 
         self.objects_in_use_pub.publish(message_objects_in_use(objects=self.objects_in_use))
 
 
+def test(test):
+    print(test)
+
+
 if __name__ == "__main__":
     nlp_node = InterruptClient()
-    retries = 5
-    with whenever(Fluent()):
-        print("x")
-
+    nlp_node.command_queue.whenever(test)
     rospy.spin()

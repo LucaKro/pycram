@@ -736,17 +736,22 @@ class ObjectDesignatorDescription(DesignatorDescription):
         #     return pose
 
     def __init__(self, names: Optional[List[str]] = None, types: Optional[List[str]] = None,
+                 colors: Optional[List[List[float]]] = None, sizes: Optional[List[str]] = None,
                  resolver: Optional[Callable] = None):
         """
         Base of all object designator descriptions. Every object designator has the name and type of the object.
 
         :param names: A list of names that could describe the object
         :param types: A list of types that could represent the object
+        :param colors: A list of colors that could describe the object
+        :param sizes: A list of sizes that could represent the object
         :param resolver: An alternative resolver that returns an object designator for the list of names and types
         """
         super().__init__(resolver)
         self.types: Optional[List[str]] = types
         self.names: Optional[List[str]] = names
+        self.colors: Optional[List[List[float]]] = colors
+        self.sizes: Optional[List[str]] = sizes
 
     def ground(self) -> Union[Object, bool]:
         """
@@ -771,6 +776,14 @@ class ObjectDesignatorDescription(DesignatorDescription):
 
             # skip if type does not match specification
             if self.types and obj.type not in self.types:
+                continue
+
+            # skip if color does not match specification
+            if self.colors and obj.color not in self.colors:
+                continue
+
+            # skip if size does not match specification
+            if self.sizes and obj.size not in self.sizes:
                 continue
 
             yield self.Object(obj.name, obj.type, obj)
