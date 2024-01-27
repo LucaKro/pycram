@@ -84,14 +84,17 @@ def announce_pick(name: str, type: str, color: str, location: str, size: str):
     print(f"I am now interruptable for 5 seconds")
     time.sleep(5)
 
+
 def announce_bring(name: str, type: str, color: str, location: str, size: str):
     print(f"I will now bring the {size.lower()} {color.lower()} {type.lower()} to you")
     print(f"I am now interruptable for 5 seconds")
     time.sleep(5)
 
+
 def announce_recovery():
     print("Recovering from Interrupt")
     print("I am not interruptable here at the moment")
+
 
 def announce_pick_place(case: str, type: str, color: str, size: str):
     print(f"I will now {case.lower()} the {size.lower()} {color.lower()} {type.lower()}")
@@ -113,7 +116,7 @@ with simulated_robot:
 
     milk_desig = Code(lambda: move_and_detect(obj_type, obj_size, obj_color))
 
-    announce = Code(lambda: announce_action(obj_name, obj_type, obj_color, obj_location, obj_size))
+    announce = Code(lambda: announce_pick(obj_name, obj_type, obj_color, obj_location, obj_size))
 
     plan = announce + milk_desig >> Monitor(monitor_func)
 
@@ -126,8 +129,9 @@ with simulated_robot:
     ParkArmsAction.Action(Arms.BOTH).perform()
 
     plan = NavigateAction([Pose([4, 2.8, 0])]) + announce >> Monitor(monitor_func)
+    announce = Code(lambda: announce_bring(obj_name, obj_type, obj_color, obj_location, obj_size))
 
-    recover = Code(lambda: announce_action2()) + NavigateAction([Pose([1.7, 2, 0])]) + Code(
+    recover = Code(lambda: announce_recovery()) + NavigateAction([Pose([1.7, 2, 0])]) + Code(
         lambda: place_and_pick_new_obj(milk_desig, [2.5, 2, 1.02], obj_type, obj_size, obj_color))
 
     RetryMonitor(plan, max_tries=5, recovery=recover).perform()
