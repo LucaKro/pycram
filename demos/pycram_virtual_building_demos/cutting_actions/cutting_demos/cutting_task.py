@@ -14,14 +14,14 @@ def start_cutting(obj, technique):
 
     _technique = technique.split(":", 1)[1]
     #######################################################################################
-    rospy.loginfo("Querying the ontology for the cutting task")
-    query_resolver = SPARQL()
+    #rospy.loginfo("Querying the ontology for the cutting task")
+    #query_resolver = SPARQL()
 
-    repititions_ont = query_resolver.repetitions(technique, obj)
-    rospy.loginfo("The repetition for the task is: " + repititions_ont)
+    #repititions_ont = query_resolver.repetitions(technique, obj)
+    #rospy.loginfo("The repetition for the task is: " + repititions_ont)
 
-    position_ont, position_name = query_resolver.position(technique, obj)
-    rospy.loginfo("The start position is: " + position_ont)
+    #position_ont, position_name = query_resolver.position(technique, obj)
+    #rospy.loginfo("The start position is: " + position_ont)
 
     # cutting_tool_ont, cutting_tool = query_resolver.get_cutting_tool(technique, obj)
     # rospy.loginfo("The tool to cut with is:  " + cutting_tool_ont)
