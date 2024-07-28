@@ -14,10 +14,11 @@ from pycram.resolver.action.SPARQL import SPARQL
 from IPython.display import display, HTML, clear_output
 
 
-objects = [(None, None), ('apple', "obo:FOODON_03301710"), ('avocado', "obo:FOODON_00003600"),
-    ('banana', "obo:FOODON_00004183"), ('cucumber', "obo:FOODON_00003415"),
-    ('lemon', "obo:FOODON_03301441"), ('lime', "obo:FOODON_00003661"),
-    ('orange', "obo:FOODON_03309832"),  ('tomato', "obo:FOODON_03309927")]
+objects = [(None, None), ('apple', "obo:FOODON_03301710"),
+           # ('avocado', "obo:FOODON_00003600"), ('banana', "obo:FOODON_00004183"),
+           # ('cucumber', "obo:FOODON_00003415"),
+           ('lemon', "obo:FOODON_03301441"), ('lime', "obo:FOODON_00003661"),
+           ('orange', "obo:FOODON_03309832"),  ('tomato', "obo:FOODON_03309927")]
 
 # all available parameters
 tasks = [(None, None), ('Halving', "cut:Halving"), ('Cutting', "soma:Cutting"), ('Slicing', "soma:Slicing")]
