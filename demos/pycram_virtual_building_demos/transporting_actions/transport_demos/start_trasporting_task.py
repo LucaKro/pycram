@@ -4,7 +4,7 @@ from IPython.display import display, clear_output, HTML
 
 from pycram.context_knowledge import ContextConfig, generate_context
 
-contexts = [('Select', None),('Breakfast', "breakfast"), ('Clean Up', "clean_up")]
+contexts = [('Select', None),('Breakfast', "breakfast"), ('Clean Up (Unavailable)', None)]  # ('Clean Up', "clean_up")]
 environments = [('Select', None), ('Apartment', "apartment-small.urdf"), ('Kitchen (Unavailable)', None)] #('Kitchen', "kitchen-small.urdf")
 locations = [('Select', None), ('Table', "table_area_main"), ('Countertop', "island_countertop")]
 
@@ -46,6 +46,7 @@ def setup_task_object_widgets():
 def start_demo(func):
     global output
     output = Output()
+    output.clear_output()
     setup_task_object_widgets()
     execute_button = Button(description="Execute Task")
     # Use a lambda function to defer the call to `robot_execute`

@@ -23,11 +23,3 @@ repositories:
     type: git
     url: https://github.com/orocos/orocos_kinematics_dynamics.git
     version: v1.5.1
-  armar6_description:
-    type: git
-    url: https://github.com/sunava/armar6_description
-    version: main
-  iai_tiago:
-    type: git
-    url: https://github.com/code-iai/iai_tiago.git
-    version: main
