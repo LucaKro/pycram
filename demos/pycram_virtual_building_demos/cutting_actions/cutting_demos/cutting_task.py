@@ -81,6 +81,9 @@ def start_cutting(obj, technique):
             #                   [0, 0, 0, 1])
             knife_pose = Pose([2.0, 1.73, 0.785],
                               [0.05, 0.999, 0.05, 0.999])
+        elif robot_description.name == "stretch_description":
+            knife_pose = Pose([1.633, 1.45, 1.21],
+                              [0, 0, 1.074, -0.92])
         else:
             knife_pose = Pose([2.0449586673391935, 1.5384467778416917, 1.2229705326966067],
                               [0.14010099565491793, -0.7025332835765593, 0.15537176280408957, 0.6802046102510538])
@@ -99,6 +102,12 @@ def start_cutting(obj, technique):
             MoveTorsoAction([0.33]).resolve().perform()
             location_pose = Pose([1.5, 2.25, 0])
             NavigateAction([location_pose]).resolve().perform()
+        elif robot_description.name == "stretch_description":
+            MoveGripperMotion(motion="close", gripper="right").resolve().perform()
+            MoveTorsoAction([1]).resolve().perform()
+            location_pose = Pose([1.725, 2.05, 0], [0, 0, 1, 1])
+            NavigateAction([location_pose]).resolve().perform()
+
 
         LookAtAction([looking_pose]).resolve().perform()
         status, object_dict = DetectAction(technique='specific', object_type="object_to_be_cut").resolve().perform()
