@@ -35,7 +35,7 @@ clean_up_objects = {
                          "default_location": "table_area_main"},
     "jeroen_cup": {"type": "jeroen_cup", "model": "jeroen_cup.stl",
                    "pose": [4.659999806835296, 4.139999841440455, 0.8119486117362978], "color": [0, 0, 1, 1],
-                   "default_location": "cabinet10_drawer_top"},
+                   "default_location": "table_area_main"},
     "bowl": {"type": "bowl", "model": "bowl.stl", "pose": [4.6599997387605585, 4.339999616031064, 0.8166916942596436],
              "color": [1, 1, 0, 1], "default_location": "table_area_main"}}
 
