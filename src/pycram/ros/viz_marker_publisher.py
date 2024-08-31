@@ -4,6 +4,8 @@ import threading
 import time
 from enum import Enum
 
+import numpy as np
+import tf
 from geometry_msgs.msg import Vector3, Quaternion, Point
 from std_msgs.msg import ColorRGBA
 
@@ -118,7 +120,10 @@ class VizMarkerPublisher:
                 if type(geom) == urdf_parser_py.urdf.Mesh:
                     msg.type = Marker.MESH_RESOURCE
                     msg.mesh_resource = "file://" + geom.filename
-                    msg.scale = Vector3(1, 1, 1)
+                    if hasattr(geom, "scale") and geom.scale:
+                        msg.scale = Vector3(geom.scale[0], geom.scale[1], geom.scale[2])
+                    else:
+                        msg.scale = Vector3(1, 1, 1)
                     msg.mesh_use_embedded_materials = True
                 elif type(geom) == urdf_parser_py.urdf.Cylinder:
                     msg.type = Marker.CYLINDER
@@ -230,6 +235,9 @@ class ManualMarkerPublisher:
 
         self.create_marker(name=name, marker_type=Marker.ARROW, marker_pose=pose,
                            marker_scales=(0.1, 0.01, 0.01), color_rgba=color_rgba)
+        pose = Pose([1,1,1], [0,0,1,1])
+        self.create_marker(name="name", marker_type=Marker.ARROW, marker_pose=pose,
+                           marker_scales=(0.1, 0.01, 0.01), color_rgba=color_rgba)
         self.marker_array_pub.publish(self.marker_array)
 
     def _publish_object(self, name, pose, bw_object):
@@ -271,7 +279,7 @@ class ManualMarkerPublisher:
         :param path_to_resource: Path to the resource of a Bulletworld object
         """
 
-        frame_id = marker_pose.header.frame_id
+        frame_id = "simulated/map"
 
         new_marker = Marker()
         new_marker.id = self.current_id
@@ -282,7 +290,7 @@ class ManualMarkerPublisher:
         new_marker.pose.position.x = marker_pose.pose.position.x
         new_marker.pose.position.y = marker_pose.pose.position.y
         new_marker.pose.position.z = marker_pose.pose.position.z
-        new_marker.pose.orientation = Quaternion(0.0, 0.0, 0.0, 1.0)
+        new_marker.pose.orientation = marker_pose.pose.orientation #Quaternion(0.0, 0.0, 0.0, 1.0)
         new_marker.scale.x = marker_scales[0]
         new_marker.scale.y = marker_scales[1]
         new_marker.scale.z = marker_scales[2]
@@ -357,14 +365,14 @@ class ManualMarkerPublisher:
 
 
 class AxisMarkerPublisher:
-    def __init__(self, topic='/pycram/axis_marker', marker_id=0, frame_id='map'):
-        self.topic = topic
-        self.marker_id = marker_id
-        self.frame_id = frame_id
-        self.marker_pub = rospy.Publisher(self.topic, MarkerArray, queue_size=10)
+    def __init__(self, topic='/pycram/axis_marker', frame_id='simulated/map'):
+
+        self.marker_pub = rospy.Publisher(topic, MarkerArray, queue_size=10)
+
         self.marker_array = MarkerArray()
-        self.marker_pub.publish(self.marker_array)
-        self.thread = threading.Thread(target=self._publish)
+        self.marker_overview = {}
+        self.current_id = 0
+        self.frame_id = frame_id
 
         self.length = None
         self.duration = None
@@ -372,7 +380,10 @@ class AxisMarkerPublisher:
         self.axis = None
         self.color = None
 
-    def publish(self, pose, axis, duration=5.0, length=2.0, color=None):
+        self.thread = threading.Thread(target=self._publish)
+
+
+    def publish(self, pose, duration=15.0, length=0.1, name=None):
         """
         Publish a MarkerArray with given pose and axis.
         Duration, length and color of the line are optional.
@@ -384,19 +395,15 @@ class AxisMarkerPublisher:
         :param color: Color of the line if it should be personalized
         """
 
-        if isinstance(axis, AxisIdentifier):
-            axis = axis.value
-
-        if color is None:
-            color = self._get_color(axis)
-        else:
-            color = Colors.get_color(color)
-
-        self.color = color
-        self.axis = axis
+        self.name = name
         self.pose = pose
         self.duration = duration
         self.length = length
+
+        self._create_line(self.pose, AxisIdentifier.Y.value, self.duration, self.length, Colors.get_color('green'))
+        self._create_line(self.pose, AxisIdentifier.X.value, self.duration, self.length, Colors.get_color('red'))
+        self._create_line(self.pose, AxisIdentifier.Z.value, self.duration, self.length, Colors.get_color('blue'))
+
 
         self.thread.start()
         rospy.loginfo("Publishing axis visualization")
@@ -404,7 +411,9 @@ class AxisMarkerPublisher:
         rospy.logdebug("Stopped Axis visualization")
 
     def _publish(self):
-        self._create_line(self.pose, self.axis, self.duration, self.length, self.color)
+        if self.name in self.marker_overview.keys():
+            self._update_marker(self.marker_overview[self.name], new_pose=self.pose)
+            return
 
         stop_thread = False
         duration = 1
@@ -452,21 +461,21 @@ class AxisMarkerPublisher:
         line_marker = Marker()
         line_marker.header.frame_id = self.frame_id
         line_marker.header.stamp = rospy.Time.now()
-        line_marker.ns = 'axis_visualization'
-        line_marker.id = self.marker_id
+        line_marker.ns = f'axis_visualization_{self.current_id}'
+        line_marker.id = self.current_id
         line_marker.type = Marker.LINE_LIST
         line_marker.action = Marker.ADD
-        line_marker.pose = pose
         line_marker.scale.x = 0.01  # Line width
         line_marker.color = color
         line_marker.lifetime = rospy.Duration(duration)
 
-        # Create two points for the line (start and end)
+        # Start point at the position specified by the pose (translation part)
         start_point = Point()
         start_point.x = pose.position.x
         start_point.y = pose.position.y
         start_point.z = pose.position.z
 
+        # Calculate the end point by adding the rotated axis vector (scaled by length)
         end_point = Point()
         end_point.x = pose.position.x + (axis[0] * length)
         end_point.y = pose.position.y + (axis[1] * length)
@@ -477,6 +486,29 @@ class AxisMarkerPublisher:
 
         # Add the line marker to the MarkerArray
         self.marker_array.markers.append(line_marker)
+        self.marker_overview[f"{self.name}_{self.current_id}"] = line_marker.id
+        self.current_id += 1
+
+    def _update_marker(self, marker_id, new_pose):
+        """
+        Update an existing marker to a new pose
+
+        :param marker_id: id of the marker that should be updated
+        :param new_pose: Pose where the updated marker is set
+        """
+
+        # Find the marker with the specified ID
+        for marker in self.marker_array.markers:
+            if marker.id == marker_id:
+                # Update successful
+                marker.pose = new_pose
+                rospy.logdebug(f"Marker {marker_id} updated")
+                self.marker_pub.publish(self.marker_array)
+                return True
+
+        # Update was not successful
+        rospy.logwarn(f"Marker {marker_id} not found for update")
+        return False
 
 
 class AxisIdentifier(Enum):

@@ -2,6 +2,7 @@ import tf
 import numpy as np
 import rospy
 import pybullet as p
+from rospy import sleep
 
 from .bullet_world import Object, BulletWorld, Use_shadow_world
 from .bullet_world_reasoning import contact
@@ -12,6 +13,8 @@ from .external_interfaces.ik import request_ik
 from .plan_failures import IKError
 from .helper import _apply_ik
 from typing import Type, Tuple, List, Union, Dict, Iterable
+
+from .ros.viz_marker_publisher import ManualMarkerPublisher
 
 
 def pose_generator(costmap: Costmap, number_of_samples=100, orientation_generator=None) -> Iterable:
@@ -70,7 +73,7 @@ def generate_orientation(position: List[float], origin: Pose) -> List[float]:
         robot should face.
     :return: A quaternion of the calculated orientation
     """
-    angle = np.arctan2(position[1] - origin.position.y, position[0] - origin.position.x) + np.pi
+    angle = np.arctan2(position[1] - origin.position.y, position[0] - origin.position.x) - np.pi/2
     quaternion = list(tf.transformations.quaternion_from_euler(0, 0, angle, axes="sxyz"))
     return quaternion
 
@@ -141,7 +144,7 @@ def reachability_validator(pose: Pose,
     # left_joints = robot_description._safely_access_chains('left').joints
     left_joints = robot_description.chains['left'].joints
     # right_joints = robot_description._safely_access_chains('right').joints
-    if robot.name != 'hsrb':
+    if "right" in robot_description.chains:
         right_joints = robot_description.chains['right'].joints
     # TODO Make orientation adhere to grasping orientation
     res = False
@@ -178,31 +181,31 @@ def reachability_validator(pose: Pose,
         pass
     finally:
         robot.set_joint_states(joint_state_before_ik)
+    if "right" in robot_description.chains:
+        try:
+            # resp = request_ik(base_link, end_effector, target_diff, robot, right_joints)
+            resp = request_ik(target, robot, right_joints, right_gripper)
 
-    try:
-        # resp = request_ik(base_link, end_effector, target_diff, robot, right_joints)
-        resp = request_ik(target, robot, right_joints, right_gripper)
+            _apply_ik(robot, resp, right_joints)
 
-        _apply_ik(robot, resp, right_joints)
+            for obj in BulletWorld.current_bullet_world.objects:
+                if obj.name == "floor":
+                    continue
+                in_contact, contact_links = contact(robot, obj, return_links=True)
+                allowed_links = allowed_collision[obj] if obj in allowed_collision.keys() else []
 
-        for obj in BulletWorld.current_bullet_world.objects:
-            if obj.name == "floor":
-                continue
-            in_contact, contact_links = contact(robot, obj, return_links=True)
-            allowed_links = allowed_collision[obj] if obj in allowed_collision.keys() else []
+                if in_contact:
+                    for link in contact_links:
 
-            if in_contact:
-                for link in contact_links:
+                        if link[0] in allowed_robot_links or link[1] in allowed_links:
+                            in_contact = False
 
-                    if link[0] in allowed_robot_links or link[1] in allowed_links:
-                        in_contact = False
-
-        if not in_contact:
-            arms.append("right")
-            res = True
-    except IKError:
-        pass
-    finally:
-        robot.set_joint_states(joint_state_before_ik)
+            if not in_contact:
+                arms.append("right")
+                res = True
+        except IKError:
+            pass
+        finally:
+            robot.set_joint_states(joint_state_before_ik)
 
     return res, arms

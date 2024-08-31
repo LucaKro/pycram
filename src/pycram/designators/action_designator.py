@@ -30,6 +30,7 @@ from ..orm.action_designator import (ParkArmsAction as ORMParkArmsAction, Naviga
 from ..orm.base import Quaternion, Position, Base
 from ..pose import Pose
 from ..robot_descriptions import robot_description
+from ..ros.viz_marker_publisher import ManualMarkerPublisher
 from ..task import with_tree
 from pycram.enums import ObjectType
 
@@ -241,7 +242,7 @@ class ParkArmsAction(ActionDesignatorDescription):
             if self.arm in [Arms.LEFT, Arms.BOTH]:
                 kwargs["left_arm_config"] = "park"
                 MoveArmJointsMotion(**kwargs).resolve().perform()
-                if robot_description.name == "Armar6":
+                if robot_description.name == "Armar6" or robot_description.name == "iai_donbot":
                     MoveTorsoAction([-0.1]).resolve().perform()
                 else:
                     MoveTorsoAction([
@@ -349,6 +350,9 @@ class PickUpAction(ActionDesignatorDescription):
             # Transform the pose to the map frame
             oTmG = lt.transform_pose(oTb, "map")
             BulletWorld.current_bullet_world.add_vis_axis(oTmG)
+            marker = ManualMarkerPublisher()
+            marker.clear_all_marker()
+            marker.publish(pose=oTm, name="target")
             # BulletWorld.current_bullet_world.add_vis_axis(otbtest)
             #
             #
@@ -361,7 +365,7 @@ class PickUpAction(ActionDesignatorDescription):
             # BulletWorld.current_bullet_world.add_vis_axis(oTmG)
             # Execute Bool, because sometimes u only want to visualize the poses to test things
             if execute:
-                if robot_description.name == "Armar6":
+                if robot_description.name == "Armar6" or robot_description.name == "iai_donbot":
                     MoveTorsoAction([-0.1]).resolve().perform()
                 else:
                     MoveTorsoAction([0.25]).resolve().perform()
@@ -525,7 +529,11 @@ class PlaceAction(ActionDesignatorDescription):
                 oTb = lt.transform_pose(oTm, robot.get_link_tf_frame("platform"))
             else:
                 oTb = lt.transform_pose(oTm, robot.get_link_tf_frame("base_link"))
-            oTb.orientation = grasp_rotation
+
+            grasp_orientation = helper.multiply_quaternions(
+                [oTb.orientation.x, oTb.orientation.y, oTb.orientation.z, oTb.orientation.w], grasp_rotation)
+            oTb.orientation = grasp_orientation
+
             oTmG = lt.transform_pose(oTb, "map")
 
             # rospy.logwarn("Placing now")
@@ -833,9 +841,9 @@ class TransportAction(ActionDesignatorDescription):
 
                 obj_type = self.current_context.get_object_type(obj_name)
 
-                grasp, arm, detected_object = access_and_pickup(current_context, location_to_search, obj_type,
+                grasp, arm, detected_object, handle_desig = access_and_pickup(current_context, location_to_search, obj_type,
                                                                 open_container=open_container)
-                return grasp, arm, detected_object
+                return grasp, arm, detected_object, handle_desig
 
             def get_nav_pose_tiago(object_type):
                 poses = {
@@ -861,7 +869,9 @@ class TransportAction(ActionDesignatorDescription):
                 """
                 # todo maybe a check which arm is free?
                 global detected_object, grasp
+                only_one_arm = True if ("left" in robot_description.chains) != ("right" in robot_description.chains) else False
                 arm = "left"  # Default arm, can be made dynamic or parameterized
+                handle_desig = None
                 link_pose = current_context.environment_object.get_link_pose(location_to_search)
                 if open_container:
                     link_name = current_context.get_handle(location_to_search)
@@ -869,8 +879,10 @@ class TransportAction(ActionDesignatorDescription):
 
                 if open_container:
                     handle_desig = ObjectPart(names=[location_to_search], part_of=envi_desig.resolve())
-                    #drawer_open_location = AccessingLocation(handle_desig=handle_desig.resolve(),
-                    #                                        robot_desig=robot_desig.resolve()).resolve()
+                    # drawer_open_location = AccessingLocation(handle_desig=handle_desig.resolve(),
+                    #                                          robot_desig=robot_desig.resolve()).resolve()
+                    #
+                    # print("drawer_open_location", drawer_open_location)
 
                     # hardcoded position for presentations
                     if robot_description.name == "Armar6":
@@ -878,6 +890,8 @@ class TransportAction(ActionDesignatorDescription):
                     elif robot_description.name == "tiago_dual":
                         #pose = Pose([1.44, 1.8, 0], [0, 0, 0, 1])
                         pose = Pose([1.45, 2.7, 0], [0, 0, 0, 1])
+                    elif robot_description.name == "iai_donbot":
+                        pose = Pose([1.7674915790557861, 2.7073597526550293, 0], [0, 0, 0.2040033016133158, 0.9789702002261697])
                     else:
                         pose = Pose([1.75, 1.79, 0], [0, 0, 0.533512180079847, 0.8457923821520558])
                     if robot_description.name == "tiago_dual":
@@ -923,19 +937,25 @@ class TransportAction(ActionDesignatorDescription):
 
                                 NavigateAction([Pose([1.44, 1.8, 0], [0, 0, 0, 1])]).resolve().perform()
                                 arm = "left"
+                        if robot_description.name == "iai_donbot":
+                            arm = "left"
                         grasp = pickup_target_object(detected_object, arm)
                 else:
                     rospy.logerr("Object not found")
                     grasp, detected_object = None, None
 
-                if open_container:
+                if open_container and not only_one_arm:
                     if robot_description.name == "tiago_dual":
                         NavigateAction([drawer_open_location.pose]).resolve().perform()
                     CloseAction(object_designator_description=handle_desig,
                                 arms=[drawer_open_location.arms[0]]).resolve().perform()
 
                 ParkArmsAction([Arms.BOTH]).resolve().perform()
-                return grasp, arm, detected_object
+
+
+                # for some reason handle_desig makes donbot grasp the middle of the drawer if i create it from scratch
+                # for closing the drawer, so I need to return the handle_desig back for later usage. Should investigate.
+                return grasp, arm, detected_object, handle_desig
 
             def get_place_pose(object_type, location, robot_name):
                 pr2_poses = {
@@ -977,10 +997,25 @@ class TransportAction(ActionDesignatorDescription):
                     ('jeroen_cup', 'island_countertop'): Pose([2.9, 3.9, 0.95], [0, 0, 1, 0]),
                 }
 
+                donbot_poses = {
+                    ('bowl', 'table_area_main'): Pose([4.8, 3.8, 0.8]),
+                    ('bowl', 'island_countertop'): Pose([3, 3.8, 1.02], [0, 0, 1, 0]),
+                    ('breakfast_cereal', 'table_area_main'): Pose([4.8, 3.6, 0.8]),
+                    ('breakfast_cereal', 'island_countertop'): Pose([3, 3.6, 1.02], [0, 0, 1, 0]),
+                    ('milk', 'table_area_main'): Pose([4.8, 4, 0.8]),
+                    ('milk', 'island_countertop'): Pose([3, 4, 1.02], [0, 0, 1, 0]),
+                    ('spoon', 'table_area_main'): Pose([4.8, 3.7, 0.8], [0, 0, 0, 1]),
+                    ('spoon', 'island_countertop'): Pose([3, 3.7, 1.02], [0, 0, 1, 0]),
+                    ('jeroen_cup', 'table_area_main'): Pose([4.9, 3.9, 0.74]),
+                    ('jeroen_cup', 'island_countertop'): Pose([2.9, 3.9, 0.95], [0, 0, 1, 0]),
+                }
+
                 if robot_name == "Armar6":
                     pose = armar_poses.get((object_type, location))
                 elif robot_name == "tiago_dual":
                     pose = tiago_poses.get((object_type, location))
+                elif robot_name == "iai_donbot":
+                    pose = donbot_poses.get((object_type, location))
                 else:
                     pose = pr2_poses.get((object_type, location))
                 return pose
@@ -1020,10 +1055,23 @@ class TransportAction(ActionDesignatorDescription):
                                ('jeroen_cup', 'table_area_main'): Pose([4.1, 3.4, 0]),
                                ('jeroen_cup', 'island_countertop'): Pose([3.7, 4.3, 0], [0, 0, 1, 0]), }
 
+                donbot_poses = {('bowl', 'table_area_main'): Pose([4, 3.8, 0], [0, 0, 1, 1]),
+                             ('bowl', 'island_countertop'): Pose([3.7, 3.8, 0], [0, 0, 1, -1]),
+                             ('breakfast_cereal', 'table_area_main'): Pose([4, 3.6, 0]),
+                             ('breakfast_cereal', 'island_countertop'): Pose([3.9, 3.6, 0], [0, 0, 1, -1]),
+                             ('milk', 'table_area_main'): Pose([4, 4, 0]),
+                             ('milk', 'island_countertop'): Pose([3.9, 4, 0], [0, 0, 1, -1]),
+                             ('spoon', 'table_area_main'): Pose([4.2, 3.7, 0], [0, 0, 1, 1]),
+                             ('spoon', 'island_countertop'): Pose([3.7, 3.7, 0], [0, 0, 1, -1]),
+                             ('jeroen_cup', 'table_area_main'): Pose([4.3, 3.9, 0]),
+                             ('jeroen_cup', 'island_countertop'): Pose([3.8, 3.9, 0], [0, 0, 1, -1]), }
+
                 if robot_name == "Armar6":
                     pose = armar_poses.get((object_type, location))
                 elif robot_name == "tiago_dual":
                     pose = tiago_poses.get((object_type, location))
+                elif robot_name == "iai_donbot":
+                    pose = donbot_poses.get((object_type, location))
                 else:
                     pose = pr2_poses.get((object_type, location))
                 return pose
@@ -1065,7 +1113,7 @@ class TransportAction(ActionDesignatorDescription):
 
                 # Navigate to the location, adjust the torso, and place the object
                 NavigateAction(target_locations=[nav_pose]).resolve().perform()
-                if robot_description.name == "Armar6":
+                if robot_description.name == "Armar6" or robot_description.name == "iai_donbot":
                     MoveTorsoAction([-0.1]).resolve().perform()
                 else:
                     MoveTorsoAction([0.25]).resolve().perform()  # Adjust torso height as needed
@@ -1093,14 +1141,26 @@ class TransportAction(ActionDesignatorDescription):
                 objects = [self.target_object]
 
             for obj in objects:
-                if robot_description.name == "Armar6":
+                if robot_description.name == "Armar6" or robot_description.name == "iai_donbot":
                     MoveTorsoAction([-0.1]).resolve().perform()
                 else:
                     MoveTorsoAction([0.25]).resolve().perform()
                 ParkArmsAction([Arms.BOTH]).resolve().perform()
-                grasp, arm, detected_object = search_for_object(self.current_context, obj)
+                grasp, arm, detected_object, handle_desig = search_for_object(self.current_context, obj)
                 if not self.hold:
                     place_object(grasp, self.target_location, detected_object, arm)
+                if ("left" in robot_description.chains) != ("right" in robot_description.chains):
+                    if obj in ["spoon"]:
+                        if robot_description.name == "iai_donbot":
+                            pose = Pose([1.6074915790557861, 2.7073597526550293, 0], [0, 0, 0.2040033016133158, 0.9789702002261697])
+                        else:
+                            pose = Pose([1.75, 1.79, 0], [0, 0, 0.533512180079847, 0.8457923821520558])
+                        drawer_open_location = AccessingLocation.Location(pose, ["left"])
+                        NavigateAction([drawer_open_location.pose]).resolve().perform()
+                        CloseAction(object_designator_description=handle_desig,
+                                   arms=[drawer_open_location.arms[0]]).resolve().perform()
+                        ParkArmsAction([Arms.BOTH]).resolve().perform()
+
 
     def __init__(self, current_context: ContextConfig, target_location: Optional[str] = None,
                  hold: Optional[bool] = None, target_object: Optional[str] = None, resolver=None):
@@ -1373,6 +1433,12 @@ class GraspingAction(ActionDesignatorDescription):
                 object_pose = self.object_desig.bullet_world_object.get_pose()
             lt = LocalTransformer()
             gripper_name = robot_description.get_tool_frame(self.arm)
+            # oTb = object_pose
+            # grasp_rotation = robot_description.grasps.get_orientation_for_grasp("front")
+            #
+            # grasp_orientation = helper.multiply_quaternions(
+            #     [oTb.orientation.x, oTb.orientation.y, oTb.orientation.z, oTb.orientation.w], grasp_rotation)
+            # oTb.orientation = grasp_orientation
 
             object_pose_in_gripper = lt.transform_pose(object_pose, BulletWorld.robot.get_link_tf_frame(gripper_name))
 

@@ -31,7 +31,7 @@ class DonbotDescription(RobotDescription):
         gripper_links = ["wrist_collision", "gripper_base_link", "gripper_finger_left_link",
                          "gripper_finger_right_link", "gripper_gripper_left_link", "gripper_gripper_right_link",
                          "marco_left_finger_link", "marco_right_finger_link"]
-        gripper_joints = ["gripper_joint"]
+        gripper_joints = ["gripper_joint", "gripper_base_gripper_left_joint"]
         gripper = GripperDescription("gripper", gripper_links=gripper_links, gripper_joints=gripper_joints,
                                      gripper_meter_to_jnt_multiplier=1.0, gripper_minimal_position=0.0,
                                      gripper_convergence_delta=0.001)
@@ -45,7 +45,7 @@ class DonbotDescription(RobotDescription):
         arm_manip = ManipulatorDescription(arm_inter, tool_frame="gripper_tool_frame",
                                            gripper_description=gripper)  # or ur5_tool0
         self.add_chain("left", arm_manip)
-        self.add_chain("right", arm_manip)
+        #self.add_chain("right", arm_manip)
         # Neck
         neck_base_link = "ur5_base_link"
         neck = ChainDescription("neck", arm_joints, arm_links, base_link=neck_base_link)
@@ -76,8 +76,14 @@ class DonbotDescription(RobotDescription):
         arm_right = [-3, -1.5, 0, 1.5, -1.5, 1.5]
         back = [-4.7, -1.5, 0, 1.5, -1.5, 1.5]
         arm_left = [0, -1.5, 0, 1.5, -1.5, 1.5]
+        gripper_confs = {"open": [0.109, -0.055], "close": [0.0065, -0.0027]}
+        self.add_static_gripper_chains("left", gripper_confs)
         self.add_static_joint_chains("left", {"front": front, "arm_right": arm_right, "back": back,
                                               "arm_left": arm_left})
+        self.grasps = GraspingDescription({"front": [0.707, -0.707, 0.707, -0.707],
+                                           "left": [0, 0.707, -0.707, 0],
+                                           "right": [0, 0, 1, 1],
+                                           "top": [0.707, -0.707, 0, 0.0]})
 
     def get_camera_frame(self, name="rgb_camera"):
         # TODO: Hacky since only one optical camera frame from pr2 is used

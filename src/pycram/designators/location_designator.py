@@ -5,6 +5,7 @@ from typing import List, Tuple, Union, Iterable, Optional, Callable
 import rospy
 
 from .object_designator import ObjectDesignatorDescription, ObjectPart
+from .. import helper
 from ..bullet_world import Object, BulletWorld, Use_shadow_world
 from ..bullet_world_reasoning import link_pose_for_joint_config
 from ..designator import Designator, DesignatorError, LocationDesignatorDescription

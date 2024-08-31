@@ -7,7 +7,10 @@ import pybullet as p
 import pycram.bullet_world_reasoning as btr
 import pycram.helper as helper
 from ..bullet_world import BulletWorld, Object
-from ..designators.motion_designator import MoveArmJointsMotion, WorldStateDetectingMotion
+from ..designator import ObjectDesignatorDescription
+from ..designators.motion_designator import MoveArmJointsMotion, WorldStateDetectingMotion, MoveJointsMotion, \
+    DetectingMotion, OpeningMotion, ClosingMotion
+from ..enums import ObjectType, JointType
 from ..external_interfaces.ik import request_ik
 from ..local_transformer import LocalTransformer
 from ..pose import Pose
@@ -29,6 +32,7 @@ def _park_arms(arm):
             robot.set_joint_state(joint, pose)
 
 
+
 class DonbotNavigation(ProcessModule):
     """
     The process module to move the robot from one position to another.
@@ -37,6 +41,7 @@ class DonbotNavigation(ProcessModule):
     def _execute(self, desig):
         robot = BulletWorld.robot
         robot.set_pose(desig.target)
+
 
 class DonbotPickUp(ProcessModule):
     """
@@ -77,7 +82,6 @@ class DonbotPlace(ProcessModule):
 
         _move_arm_tcp(target_diff, robot, "left")
         robot.detach(object)
-
 
 
 class DonbotMoveHead(ProcessModule):
@@ -129,7 +133,7 @@ class DonbotDetecting(ProcessModule):
     the field of view of the robot.
     """
 
-    def _execute(self, desig):
+    def _execute(self, desig: DetectingMotion.Motion):
         robot = BulletWorld.robot
         object_type = desig.object_type
         # Should be "wide_stereo_optical_frame"
@@ -137,10 +141,35 @@ class DonbotDetecting(ProcessModule):
         # should be [0, 0, 1]
         front_facing_axis = robot_description.front_facing_axis
 
-        objects = BulletWorld.current_bullet_world.get_objects_by_type(object_type)
+        if desig.technique == 'all':
+            objects = BulletWorld.current_bullet_world.get_all_objets_not_robot()
+        elif desig.technique == 'human':
+            human = []
+            human.append(Object("human", ObjectType.HUMAN, "human_male.stl", pose=Pose([0, 0, 0])))
+            object_dict = {}
+
+            # Iterate over the list of objects and store each one in the dictionary
+            for i, obj in enumerate(human):
+                object_dict[obj.name] = obj
+            return object_dict
+
+        else:
+            objects = BulletWorld.current_bullet_world.get_objects_by_type(object_type)
+
+        object_dict = {}
+
+        perceived_objects = []
         for obj in objects:
-            if btr.visible(obj, robot.get_link_pose(cam_frame_name), front_facing_axis):
-                return obj
+            perceived_objects.append(ObjectDesignatorDescription.Object(obj.name, obj.type, obj))
+
+            # todo: commented out since the visualisation is not working good bc of rendering one object
+            # if btr.visible(obj, robot.get_link_pose(cam_frame_name), front_facing_axis):
+
+        # Iterate over the list of objects and store each one in the dictionary
+        for i, obj in enumerate(perceived_objects):
+            object_dict[obj.name] = obj
+
+        return object_dict
 
 
 class DonbotMoveTCP(ProcessModule):
@@ -155,7 +184,7 @@ class DonbotMoveTCP(ProcessModule):
         _move_arm_tcp(target, robot, desig.arm)
 
 
-class DonbotMoveJoints(ProcessModule):
+class DonbotMoveArmJoints(ProcessModule):
     """
     This process modules moves the joints of either the right or the left arm. The joint states can be given as
     list that should be applied or a pre-defined position can be used, such as "parking"
@@ -167,6 +196,16 @@ class DonbotMoveJoints(ProcessModule):
             robot.set_joint_states(desig.left_arm_poses)
 
 
+class DonbotMoveJoints(ProcessModule):
+    """
+    Process Module for generic joint movements, is not confined to the arms but can move any joint of the robot
+    """
+
+    def _execute(self, desig: MoveJointsMotion.Motion):
+        robot = BulletWorld.robot
+        robot.set_joint_states(dict(zip(desig.names, desig.positions)))
+
+
 class DonbotWorldStateDetecting(ProcessModule):
     """
     This process module detectes an object even if it is not in the field of view of the robot.
@@ -175,6 +214,45 @@ class DonbotWorldStateDetecting(ProcessModule):
     def _execute(self, desig: WorldStateDetectingMotion.Motion):
         obj_type = desig.object_type
         return list(filter(lambda obj: obj.type == obj_type, BulletWorld.current_bullet_world.objects))[0]
+
+class DonbotOpen(ProcessModule):
+    """
+    Low-level implementation of opening a container in the simulation. Assumes the handle is already grasped.
+    """
+
+    def _execute(self, desig: OpeningMotion.Motion):
+        part_of_object = desig.object_part.bullet_world_object
+
+        container_joint = part_of_object.find_joint_above(desig.object_part.name, JointType.PRISMATIC)
+
+        goal_pose = btr.link_pose_for_joint_config(part_of_object, {
+            container_joint: part_of_object.get_joint_limits(container_joint)[1] - 0.05}, desig.object_part.name)
+
+        _move_arm_tcp(goal_pose, BulletWorld.robot, desig.arm)
+
+        desig.object_part.bullet_world_object.set_joint_state(container_joint,
+                                                              part_of_object.get_joint_limits(
+                                                                  container_joint)[1])
+
+
+class DonbotClose(ProcessModule):
+    """
+    Low-level implementation that lets the robot close a grasped container, in simulation
+    """
+
+    def _execute(self, desig: ClosingMotion.Motion):
+        part_of_object = desig.object_part.bullet_world_object
+
+        container_joint = part_of_object.find_joint_above(desig.object_part.name, JointType.PRISMATIC)
+
+        goal_pose = btr.link_pose_for_joint_config(part_of_object, {
+            container_joint: part_of_object.get_joint_limits(container_joint)[0]}, desig.object_part.name)
+
+        _move_arm_tcp(goal_pose, BulletWorld.robot, desig.arm)
+
+        desig.object_part.bullet_world_object.set_joint_state(container_joint,
+                                                              part_of_object.get_joint_limits(
+                                                                  container_joint)[0])
 
 def _move_arm_tcp(target: Pose, robot: Object, arm: str) -> None:
     gripper = robot_description.get_tool_frame(arm)
@@ -228,7 +306,11 @@ class DonbotManager(ProcessModuleManager):
 
     def move_arm_joints(self):
         if ProcessModuleManager.execution_type == "simulated":
-            return DonbotMoveJoints(self._move_arm_joints_lock)
+            return DonbotMoveArmJoints(self._move_arm_joints_lock)
+
+    def move_joints(self):
+        if ProcessModuleManager.execution_type == "simulated":
+            return DonbotMoveJoints(self._move_joints_lock)
 
     def world_state_detecting(self):
         if ProcessModuleManager.execution_type == "simulated":
@@ -237,3 +319,11 @@ class DonbotManager(ProcessModuleManager):
     def move_gripper(self):
         if ProcessModuleManager.execution_type == "simulated":
             return DonbotMoveGripper(self._move_gripper_lock)
+
+    def open(self):
+        if ProcessModuleManager.execution_type == "simulated":
+            return DonbotOpen(self._open_lock)
+
+    def close(self):
+        if ProcessModuleManager.execution_type == "simulated":
+            return DonbotClose(self._close_lock)

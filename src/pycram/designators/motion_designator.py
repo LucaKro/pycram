@@ -574,6 +574,7 @@ class MoveJointsMotion(MotionDesignatorDescription):
         for i in range(len(self.names)):
             lower, upper = BulletWorld.robot.get_joint_limits(self.names[i])
             if self.positions[i] < lower or self.positions[i] > upper:
+                print(f"Configuration: {self.positions[i]}")
                 raise DesignatorError(
                     f"[Motion Designator][Move Joints] The given configuration for the Joint {self.names[i]} violates its limits: (lower = {lower}, upper = {upper})")
         return self.Motion(self.cmd, self.names, self.positions)
