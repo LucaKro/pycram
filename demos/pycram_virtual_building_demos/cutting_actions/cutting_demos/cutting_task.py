@@ -7,21 +7,20 @@ from pycram.ros.viz_marker_publisher import VizMarkerPublisher
 from pycram.resolver.action.SPARQL import SPARQL
 from IPython.display import display, HTML, clear_output
 
+
 def start_cutting(obj, technique):
     display(HTML('<img src="https://i.gifer.com/XVo6.gif" alt="Hourglass animation" width="50">'))
 
-
-
     _technique = technique.split(":", 1)[1]
     #######################################################################################
-    #rospy.loginfo("Querying the ontology for the cutting task")
-    #query_resolver = SPARQL()
+    # rospy.loginfo("Querying the ontology for the cutting task")
+    # query_resolver = SPARQL()
 
-    #repititions_ont = query_resolver.repetitions(technique, obj)
-    #rospy.loginfo("The repetition for the task is: " + repititions_ont)
+    # repititions_ont = query_resolver.repetitions(technique, obj)
+    # rospy.loginfo("The repetition for the task is: " + repititions_ont)
 
-    #position_ont, position_name = query_resolver.position(technique, obj)
-    #rospy.loginfo("The start position is: " + position_ont)
+    # position_ont, position_name = query_resolver.position(technique, obj)
+    # rospy.loginfo("The start position is: " + position_ont)
 
     # cutting_tool_ont, cutting_tool = query_resolver.get_cutting_tool(technique, obj)
     # rospy.loginfo("The tool to cut with is:  " + cutting_tool_ont)
@@ -68,22 +67,31 @@ def start_cutting(obj, technique):
 
     with simulated_robot:
         ParkArmsAction([Arms.BOTH]).resolve().perform()
-        location_pose = Pose([1.7, 2, 0])
+        pre_location_pose = Pose([1.7, 2, 0])
         looking_pose = Pose([2.5, 2, 0.97])
-        NavigateAction([location_pose]).resolve().perform()
-
+        NavigateAction([pre_location_pose]).resolve().perform()
 
         if robot_description.name == "Armar6":
             knife_pose = Pose([2.2049586673391935, 1.40084467778416917, 1.0229705326966067],
                               [0, 0, 1, 1])
+        elif robot_description.name == "iai_donbot":
+            lt = LocalTransformer()
+            robot = BulletWorld.current_bullet_world.robot
+            knife_pose = robot.get_link_pose("gripper_tool_frame")
+            knife_pose.set_position([knife_pose.position.x, knife_pose.position.y, knife_pose.position.z - 0.05])
+            knife_pose.set_orientation([0.004536,0.970305,-0.004536,1.029])
+
         else:
             knife_pose = Pose([2.0449586673391935, 1.5384467778416917, 1.2229705326966067],
                               [0.14010099565491793, -0.7025332835765593, 0.15537176280408957, 0.6802046102510538])
 
         cutting_tool = Object("knife", "cutting_tool", "butter_knife.stl", knife_pose)
 
-        tool_frame = robot_description.get_tool_frame("right")
+        tool_frame = robot_description.get_tool_frame("left")
         BulletWorld.current_bullet_world.robot.attach(object=cutting_tool, link=tool_frame)
+
+        location_pose = Pose([1.6, 2.4, 0], [0, 0, 1, 1])
+        NavigateAction([location_pose]).resolve().perform()
 
         if robot_description.name == "Armar6":
             MoveGripperMotion(motion="close", gripper="right").resolve().perform()
@@ -96,13 +104,13 @@ def start_cutting(obj, technique):
             for key, value in object_dict.items():
                 detected_object = object_dict[key]
                 bigknife_BO = BelieveObject(names=["knife"]).resolve()
-                CuttingAction(detected_object, bigknife_BO, ["right"], _technique).resolve().perform()
+                CuttingAction(detected_object, bigknife_BO, ["left"], _technique).resolve().perform()
         ParkArmsAction([Arms.BOTH]).resolve().perform()
         #clear_output(wait=True)
         rospy.loginfo("Cutting task completed!")
         obj_to_cut.remove()
         BulletWorld.current_bullet_world.remove_vis_axis()
-#
+# #
 # start_cutting("obo:FOODON_03301710", "soma:Cutting")
 # start_cutting("obo:FOODON_03301710", "soma:Slicing")
 # start_cutting("obo:FOODON_03301710", "cut:Halving")

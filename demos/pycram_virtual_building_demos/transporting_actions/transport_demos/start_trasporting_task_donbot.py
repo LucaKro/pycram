@@ -46,6 +46,7 @@ def setup_task_object_widgets():
 def start_demo(func):
     global output
     output = Output()
+    clear_output(wait=True)
     setup_task_object_widgets()
     execute_button = Button(description="Execute Task")
     # Use a lambda function to defer the call to `robot_execute`
