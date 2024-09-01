@@ -67,7 +67,7 @@ def start_cutting(obj, technique):
 
     with simulated_robot:
         ParkArmsAction([Arms.BOTH]).resolve().perform()
-        pre_location_pose = Pose([1.7, 2, 0])
+        pre_location_pose = Pose([1.2, 2, 0])
         looking_pose = Pose([2.5, 2, 0.97])
         NavigateAction([pre_location_pose]).resolve().perform()
 
@@ -80,6 +80,12 @@ def start_cutting(obj, technique):
             knife_pose = robot.get_link_pose("gripper_tool_frame")
             knife_pose.set_position([knife_pose.position.x, knife_pose.position.y, knife_pose.position.z - 0.05])
             knife_pose.set_orientation([0.004536,0.970305,-0.004536,1.029])
+        elif robot_description.name == "rollin-justin":
+            lt = LocalTransformer()
+            robot = BulletWorld.current_bullet_world.robot
+            knife_pose = robot.get_link_pose("r_gripper_tool_frame")
+            knife_pose.set_position([knife_pose.position.x, knife_pose.position.y, knife_pose.position.z+0.08])
+            knife_pose.set_orientation([0, -1, 0, 1])
 
         else:
             knife_pose = Pose([2.0449586673391935, 1.5384467778416917, 1.2229705326966067],
@@ -87,10 +93,12 @@ def start_cutting(obj, technique):
 
         cutting_tool = Object("knife", "cutting_tool", "butter_knife.stl", knife_pose)
 
-        tool_frame = robot_description.get_tool_frame("left")
+        tool_frame = robot_description.get_tool_frame("right")
         BulletWorld.current_bullet_world.robot.attach(object=cutting_tool, link=tool_frame)
+        MoveGripperMotion(motion="close", gripper="right").resolve().perform()
 
-        location_pose = Pose([1.6, 2.4, 0], [0, 0, 1, 1])
+
+        location_pose = Pose([1.4, 2, 0], [0, 0, 0, 1])
         NavigateAction([location_pose]).resolve().perform()
 
         if robot_description.name == "Armar6":
@@ -104,7 +112,7 @@ def start_cutting(obj, technique):
             for key, value in object_dict.items():
                 detected_object = object_dict[key]
                 bigknife_BO = BelieveObject(names=["knife"]).resolve()
-                CuttingAction(detected_object, bigknife_BO, ["left"], _technique).resolve().perform()
+                CuttingAction(detected_object, bigknife_BO, ["right"], _technique).resolve().perform()
         ParkArmsAction([Arms.BOTH]).resolve().perform()
         #clear_output(wait=True)
         rospy.loginfo("Cutting task completed!")
