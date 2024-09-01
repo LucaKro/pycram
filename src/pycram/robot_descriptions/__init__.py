@@ -6,6 +6,7 @@ import rospy
 from .boxy_description import BoxyDescription
 from .donbot_description import DonbotDescription
 from .hsrb_description import HSRBDescription
+from .justin_description import JUSTINDescription
 from .pr2_description import PR2Description
 from .ur5_description import UR5Description
 from .tiago_description import TiagoDescription
@@ -41,7 +42,7 @@ def update_robot_description(robot_name=None, from_ros=None):
         except Exception as e:
             logger.error("(robot-description) Could not get robot name from parameter server. Try again.")
             return None
-        res = re.findall(r"robot\ *name\ *=\ *\"\ *[a-zA-Z_0-9]*\ *\"", urdf)
+        res = re.findall(r"robot\ *name\ *=\ *\"\ *[a-zA-Z_0-9\-]*\ *\"", urdf)
         if len(res) == 1:
             begin = res[0].find("\"")
             end = res[0][begin + 1:].find("\"")
@@ -64,6 +65,8 @@ def update_robot_description(robot_name=None, from_ros=None):
         description = TiagoDescription
     elif "armar6" in robot:
         description = ARMAR6Description
+    elif "rollin-justin" in robot:
+        description = JUSTINDescription
     else:
         logger.error("(robot-description) The given robot name %s has no description class.", robot_name)
         return None

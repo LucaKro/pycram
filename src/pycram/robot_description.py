@@ -502,6 +502,18 @@ class RobotDescription:
         else:
             rospy.logerr(f"The name: {name} is not part of this robot URDF")
 
+    def get_offset(self, name):
+        """
+        Returns the offset of a Joint in the URDF.
+
+        :param name: The name of the Joint for which the offset will be returned.
+        :return: The offset of the Joint
+        """
+        if name in self.robot_urdf.joint_map.keys():
+            return self.robot_urdf.joint_map[name].origin
+        else:
+            rospy.logerr(f"The name: {name} is not part of this robot URDF")
+
     # @staticmethod
     # def from_urdf(urdf_path: str):
     #     # URDF Python library does not like ROS package paths --> replace

@@ -457,6 +457,41 @@ class AxisMarkerPublisher:
         :param color: Optional color for the Line
         """
 
+        def normalize_quaternion(q):
+            norm = np.sqrt(q.x ** 2 + q.y ** 2 + q.z ** 2 + q.w ** 2)
+            if norm > 0:
+                return q.x / norm, q.y / norm, q.z / norm, q.w / norm
+            return q.x, q.y, q.z, q.w
+
+        def quaternion_multiply(q1, q2):
+            x1, y1, z1, w1 = q1
+            x2, y2, z2, w2 = q2
+            return (
+                w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2,
+                w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2,
+                w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+            )
+
+        def rotate_axis_by_quaternion(axis, quaternion):
+            # Normalize the quaternion to avoid distortions
+            qx, qy, qz, qw = normalize_quaternion(quaternion)
+
+            # Represent axis as quaternion (x, y, z, 0)
+            axis_quat = (*axis, 0)
+
+            # Quaternion components
+            q = (qx, qy, qz, qw)
+
+            # Compute the inverse (conjugate for unit quaternion)
+            q_conjugate = (-qx, -qy, -qz, qw)
+
+            # Rotate the vector
+            rotated_quat = quaternion_multiply(quaternion_multiply(q, axis_quat), q_conjugate)
+
+            # The rotated vector is the vector part of the resulting quaternion
+            return rotated_quat[:3]
+
         # Create a line marker for the axis
         line_marker = Marker()
         line_marker.header.frame_id = self.frame_id
@@ -475,11 +510,14 @@ class AxisMarkerPublisher:
         start_point.y = pose.position.y
         start_point.z = pose.position.z
 
+        quaternion = pose.orientation
+        rotated_axis = rotate_axis_by_quaternion(axis, quaternion)
+
         # Calculate the end point by adding the rotated axis vector (scaled by length)
         end_point = Point()
-        end_point.x = pose.position.x + (axis[0] * length)
-        end_point.y = pose.position.y + (axis[1] * length)
-        end_point.z = pose.position.z + (axis[2] * length)
+        end_point.x = pose.position.x + (rotated_axis[0] * length)
+        end_point.y = pose.position.y + (rotated_axis[1] * length)
+        end_point.z = pose.position.z + (rotated_axis[2] * length)
 
         line_marker.points.append(start_point)
         line_marker.points.append(end_point)

@@ -56,6 +56,12 @@
               textfile="$(find pycram)/resources/armar6_complex.urdf"/>
   </group>
 
+    <!-- DLR ROLLIN' JUSTIN complex urdf -->
+  <group if="$(eval robot == 'justin')">
+    <param name="robot_description"
+              textfile="$(find pycram)/resources/rollin-justin.urdf"/>
+  </group>
+
   <!-- Use Knowrob -->
   <group if="$(eval use_knowrob)">
       <include file="$(find knowrob)/launch/knowrob.launch"/>

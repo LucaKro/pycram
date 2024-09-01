@@ -5,12 +5,12 @@ repositories:
     version: master
   iai_robots:
     type: git
-    url: http://github.com/code-iai/iai_robots.git
-    version: master
+    url: http://github.com/LucaKro/iai_robots.git
+    version: dlr_rollin_justin
   kdl_ik_services:
     type: git
-    url: https://github.com/cram2/kdl_ik_service.git
-    verison: master
+    url: https://github.com/LucaKro/kdl_ik_service.git
+    verison: dynamic_ik_solver
   orocos_kinematics_dynamics:
     type: git
     url: https://github.com/orocos/orocos_kinematics_dynamics.git

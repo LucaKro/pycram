@@ -53,7 +53,11 @@ class MoveTorsoAction(ActionDesignatorDescription):
 
         @with_tree
         def perform(self) -> None:
-            MoveJointsMotion([robot_description.torso_joint], [self.position]).resolve().perform()
+            if robot_description.name == "rollin-justin":
+                MoveJointsMotion(robot_description.chains["torso"].joints,
+                                 robot_description.chains["torso"].static_joint_states["down"]).resolve().perform()
+            else:
+                MoveJointsMotion([robot_description.torso_joint], [self.position]).resolve().perform()
 
         def to_sql(self) -> ORMMoveTorsoAction:
             return ORMMoveTorsoAction(self.position)
@@ -244,6 +248,8 @@ class ParkArmsAction(ActionDesignatorDescription):
                 MoveArmJointsMotion(**kwargs).resolve().perform()
                 if robot_description.name == "Armar6" or robot_description.name == "iai_donbot":
                     MoveTorsoAction([-0.1]).resolve().perform()
+                elif robot_description.name == "rollin-justin":
+                    pass
                 else:
                     MoveTorsoAction([
                         0.25]).resolve().perform()  # MoveTorsoAction([0.005]).resolve().perform()  # MoveTorsoAction([0.2]).resolve().perform()
@@ -845,16 +851,33 @@ class TransportAction(ActionDesignatorDescription):
                                                                 open_container=open_container)
                 return grasp, arm, detected_object, handle_desig
 
-            def get_nav_pose_tiago(object_type):
-                poses = {
-                    'bowl': Pose([4.8, 3.8, 0.8]),
-                    'breakfast_cereal': Pose([1.7, 1.9, 0], [0, 0, 0, 1]),
-                    'milk': Pose([1.7, 1.5, 0], [0, 0, 0, 1]),
-                    'spoon': Pose([3, 3.7, 1.02]),
-                    'jeroen_cup': Pose([1.7, 1.7, 0], [0, 0, 0, 1]),
+            def get_nav_pose_pick(object_type, location_to_search):
+                tiago_poses = {
+                    ('bowl',"island_countertop"): Pose([4.8, 3.8, 0.8]),
+                    ('breakfast_cereal', "island_countertop"): Pose([1.7, 1.9, 0], [0, 0, 0, 1]),
+                    ('milk', "island_countertop"): Pose([1.7, 1.5, 0], [0, 0, 0, 1]),
+                    ('spoon', "island_countertop"): Pose([3, 3.7, 1.02]),
+                    ('jeroen_cup', "island_countertop"): Pose([1.7, 1.7, 0], [0, 0, 0, 1]),
                 }
 
-                pose = poses.get(object_type)
+                justin_poses = {
+                    ('bowl', 'table_area_main'): Pose([3.5, 4.8, 0]),
+                    ('breakfast_cereal', "island_countertop"): Pose([1.3, 2.9, 0], [0, 0, 0, 1]),
+                    ('breakfast_cereal', 'table_area_main'): Pose([3.5, 4.8, 0]),
+                    ('milk', "island_countertop"): Pose([1.3, 2.3, 0], [0, 0, 0, 1]),
+                    ('milk', 'table_area_main'): Pose([3.5, 3.3, 0]),
+                    ('spoon', "island_countertop"): Pose([3, 3.7, 0]),
+                    ('spoon', 'table_area_main'): Pose([3.5, 4.3, 0]),
+                    ('jeroen_cup', "island_countertop"): Pose([1.3, 2.7, 0], [0, 0, 0, 1]),
+                    ('jeroen_cup', 'table_area_main'): Pose([3.5, 3.9, 0]),
+                }
+
+                if robot_description.name == "tiago_dual":
+                    pose = tiago_poses.get((object_type,location_to_search))
+                elif robot_description.name == "rollin-justin":
+                    pose = justin_poses.get((object_type,location_to_search))
+                else:
+                    pose = tiago_poses.get((object_type,location_to_search))
 
                 return pose
 
@@ -870,7 +893,7 @@ class TransportAction(ActionDesignatorDescription):
                 # todo maybe a check which arm is free?
                 global detected_object, grasp
                 only_one_arm = True if ("left" in robot_description.chains) != ("right" in robot_description.chains) else False
-                arm = "left"  # Default arm, can be made dynamic or parameterized
+                arm = "right"  # Default arm, can be made dynamic or parameterized
                 handle_desig = None
                 link_pose = current_context.environment_object.get_link_pose(location_to_search)
                 if open_container:
@@ -892,6 +915,8 @@ class TransportAction(ActionDesignatorDescription):
                         pose = Pose([1.45, 2.7, 0], [0, 0, 0, 1])
                     elif robot_description.name == "iai_donbot":
                         pose = Pose([1.7674915790557861, 2.7073597526550293, 0], [0, 0, 0.2040033016133158, 0.9789702002261697])
+                    elif robot_description.name == "rollin-justin":
+                        pose = Pose([1.4, 1.6, 0], [0, 0, 0.2040033016133158, 0.9789702002261697])
                     else:
                         pose = Pose([1.75, 1.79, 0], [0, 0, 0.533512180079847, 0.8457923821520558])
                     if robot_description.name == "tiago_dual":
@@ -908,11 +933,11 @@ class TransportAction(ActionDesignatorDescription):
                 else:
                     # todo this should be from KB depending on the location
                     if location_to_search == "island_countertop":
-                        location_pose = Pose([1.7, 2, 0])
+                        location_pose = Pose([1.3, 2, 0])
                     elif location_to_search == "table_area_main":
-                        location_pose = Pose([4, 3.5, 0])
+                        location_pose = Pose([3.5, 3.5, 0])
                     else:
-                        location_pose = Pose([1.7, 2, 0])
+                        location_pose = Pose([1.3, 2, 0])
                     NavigateAction(target_locations=[location_pose]).resolve().perform()
 
                 ParkArmsAction([Arms.BOTH]).resolve().perform()
@@ -923,9 +948,9 @@ class TransportAction(ActionDesignatorDescription):
                     for key, value in object_dict.items():
                         detected_object = object_dict[key]
                         if not open_container:
-                            if robot_description.name == "tiago_dual":
-                                NavigateAction([get_nav_pose_tiago(target_object)]).resolve().perform()
-                                arm = "left"
+                            if robot_description.name == "tiago_dual" or robot_description.name == "rollin-justin":
+                                NavigateAction([get_nav_pose_pick(target_object, location_to_search)]).resolve().perform()
+                                arm = "right" # was left for tiago
                             else:
                                 reachable_location = CostmapLocation(target=detected_object.pose,
                                                                      reachable_for=robot_desig.resolve(),
@@ -1010,12 +1035,27 @@ class TransportAction(ActionDesignatorDescription):
                     ('jeroen_cup', 'island_countertop'): Pose([2.9, 3.9, 0.95], [0, 0, 1, 0]),
                 }
 
+                justin_poses = {
+                    ('bowl', 'table_area_main'): Pose([4.8, 3.8, 0.8]),
+                    ('bowl', 'island_countertop'): Pose([3, 3.8, 1.02], [0, 0, 1, 0]),
+                    ('breakfast_cereal', 'table_area_main'): Pose([4.8, 3.6, 0.8]),
+                    ('breakfast_cereal', 'island_countertop'): Pose([3, 3.6, 1.02], [0, 0, 1, 0]),
+                    ('milk', 'table_area_main'): Pose([4.8, 4, 0.8]),
+                    ('milk', 'island_countertop'): Pose([3, 4, 1.02], [0, 0, 1, 0]),
+                    ('spoon', 'table_area_main'): Pose([4.8, 3.7, 0.8], [0, 0, 0, 1]),
+                    ('spoon', 'island_countertop'): Pose([3, 3.7, 1.02], [0, 0, 1, 0]),
+                    ('jeroen_cup', 'table_area_main'): Pose([4.9, 3.9, 0.74]),
+                    ('jeroen_cup', 'island_countertop'): Pose([2.9, 3.9, 0.95], [0, 0, 1, 0]),
+                }
+
                 if robot_name == "Armar6":
                     pose = armar_poses.get((object_type, location))
                 elif robot_name == "tiago_dual":
                     pose = tiago_poses.get((object_type, location))
                 elif robot_name == "iai_donbot":
                     pose = donbot_poses.get((object_type, location))
+                elif robot_name == "rollin-justin":
+                    pose = justin_poses.get((object_type, location))
                 else:
                     pose = pr2_poses.get((object_type, location))
                 return pose
@@ -1066,12 +1106,25 @@ class TransportAction(ActionDesignatorDescription):
                              ('jeroen_cup', 'table_area_main'): Pose([4.3, 3.9, 0]),
                              ('jeroen_cup', 'island_countertop'): Pose([3.8, 3.9, 0], [0, 0, 1, -1]), }
 
+                justin_poses = {('bowl', 'table_area_main'): Pose([3.5, 3.8, 0]),
+                               ('bowl', 'island_countertop'): Pose([4.3, 3.8, 0], [0, 0, 1, 0]),
+                               ('breakfast_cereal', 'table_area_main'): Pose([3.5, 3.6, 0]),
+                               ('breakfast_cereal', 'island_countertop'): Pose([4.3, 3.6, 0], [0, 0, 1, 0]),
+                               ('milk', 'table_area_main'): Pose([3.5, 3.8, 0]),
+                               ('milk', 'island_countertop'): Pose([4.3, 4.2, 0], [0, 0, 1, 0]),
+                               ('spoon', 'table_area_main'): Pose([3.5, 4.3, 0]),
+                               ('spoon', 'island_countertop'): Pose([4, 3.4, 0], [0, 0, 1, 0]),
+                               ('jeroen_cup', 'table_area_main'): Pose([3.5, 3.9, 0]),
+                               ('jeroen_cup', 'island_countertop'): Pose([4.2, 3.9, 0], [0, 0, 1, 0]), }
+
                 if robot_name == "Armar6":
                     pose = armar_poses.get((object_type, location))
                 elif robot_name == "tiago_dual":
                     pose = tiago_poses.get((object_type, location))
                 elif robot_name == "iai_donbot":
                     pose = donbot_poses.get((object_type, location))
+                elif robot_name == "rollin-justin":
+                    pose = justin_poses.get((object_type, location))
                 else:
                     pose = pr2_poses.get((object_type, location))
                 return pose

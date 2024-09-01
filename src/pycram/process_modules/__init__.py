@@ -5,6 +5,7 @@ from .hsrb_process_modules import HSRBManager
 from .hsrb_process_modules import HSRBManager
 from .armar6_process_modules import ARMAR6Manager
 from .tiago_process_modules import tiagoManager
+from .justin_process_modules import JustinManager
 from .default_process_modules import DefaultManager
 
 
@@ -14,5 +15,6 @@ DonbotManager()
 HSRBManager()
 ARMAR6Manager()
 tiagoManager()
+JustinManager()
 DefaultManager()
 

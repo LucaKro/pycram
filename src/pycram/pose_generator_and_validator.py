@@ -73,7 +73,7 @@ def generate_orientation(position: List[float], origin: Pose) -> List[float]:
         robot should face.
     :return: A quaternion of the calculated orientation
     """
-    angle = np.arctan2(position[1] - origin.position.y, position[0] - origin.position.x) - np.pi/2
+    angle = np.arctan2(position[1] - origin.position.y, position[0] - origin.position.x) + np.pi
     quaternion = list(tf.transformations.quaternion_from_euler(0, 0, angle, axes="sxyz"))
     return quaternion
 
