@@ -11,6 +11,7 @@ from .pr2_description import PR2Description
 from .ur5_description import UR5Description
 from .tiago_description import TiagoDescription
 from .armar6_description import ARMAR6Description
+from .icub_description import ICubDescription
 from .. import utils
 from ..robot_description import RobotDescription
 
@@ -46,7 +47,7 @@ def update_robot_description(robot_name=None, from_ros=None):
         if len(res) == 1:
             begin = res[0].find("\"")
             end = res[0][begin + 1:].find("\"")
-            robot = res[0][begin + 1:begin + 1 + end].lower()
+            robot = res[0][begin + 1:begin + 1 + end]
     else:
         return None
 
@@ -67,6 +68,8 @@ def update_robot_description(robot_name=None, from_ros=None):
         description = ARMAR6Description
     elif "rollin-justin" in robot:
         description = JUSTINDescription
+    elif "iCub" in robot:
+        description = ICubDescription
     else:
         logger.error("(robot-description) The given robot name %s has no description class.", robot_name)
         return None
