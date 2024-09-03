@@ -41,11 +41,12 @@ def robot_execute():
     global selected_task, selected_obj
     with output:
         output.clear_output()
-        if not selected_task or not selected_obj:
-            rospy.logerr("Please select a task and an object")
-            return
-        print(f"Starting {selected_task} on {selected_obj}")
-        start_cutting(selected_obj, selected_task)
+        # if not selected_task or not selected_obj:
+        #     rospy.logerr("Please select a task and an object")
+        #     return
+        # print(f"Starting {selected_task} on {selected_obj}")
+        # start_cutting(selected_obj, selected_task)
+        start_cutting()
 
     # output.clear_output()
 
@@ -72,7 +73,7 @@ def start_demo():
     Object("tiago_dual", ObjectType.ROBOT, "tiago_dual.urdf", pose=Pose([1, 2, 0]))
     Object("environment", ObjectType.ENVIRONMENT, "apartment-small.urdf")
     clear_output(wait=True)
-    setup_task_object_widgets()
+    #setup_task_object_widgets()
 
     # Use a lambda function to defer the call to `robot_execute`
     # In this lambda function, lambda x: robot_execute(func),
