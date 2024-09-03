@@ -406,9 +406,9 @@ class AxisMarkerPublisher:
 
 
         self.thread.start()
-        rospy.loginfo("Publishing axis visualization")
+        # rospy.loginfo("Publishing axis visualization")
         self.thread.join()
-        rospy.logdebug("Stopped Axis visualization")
+        # rospy.logdebug("Stopped Axis visualization")
 
     def _publish(self):
         if self.name in self.marker_overview.keys():

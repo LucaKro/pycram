@@ -8,7 +8,7 @@ from pycram.resolver.action.SPARQL import SPARQL
 from IPython.display import display, HTML, clear_output
 
 
-def start_cutting(obj, technique):
+def start_cutting(obj="obo:FOODON_00003415", technique="soma:Slicing"):
     display(HTML('<img src="https://i.gifer.com/XVo6.gif" alt="Hourglass animation" width="50">'))
 
     _technique = technique.split(":", 1)[1]

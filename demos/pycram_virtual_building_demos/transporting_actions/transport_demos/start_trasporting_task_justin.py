@@ -27,7 +27,8 @@ def robot_execute(func):
     global selected_context, selected_environment, selected_location
     with output:
         output.clear_output()
-        func(selected_location, selected_context, selected_environment, "rollin-justin")
+        func(robot_name="rollin-justin")
+        # func(selected_location, selected_context, selected_environment, "rollin-justin")
 
 
 
@@ -47,7 +48,7 @@ def start_demo(func):
     global output
     output = Output()
     clear_output(wait=True)
-    setup_task_object_widgets()
+    # setup_task_object_widgets()
     execute_button = Button(description="Execute Task")
     # Use a lambda function to defer the call to `robot_execute`
     # In this lambda function, lambda x: robot_execute(func),
