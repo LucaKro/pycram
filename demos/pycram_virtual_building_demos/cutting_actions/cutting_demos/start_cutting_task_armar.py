@@ -41,11 +41,12 @@ def robot_execute():
     global selected_task, selected_obj
     with output:
         output.clear_output()
-        if not selected_task or not selected_obj:
-            rospy.logerr("Please select a task and an object")
-            return
-        print(f"Starting {selected_task} on {selected_obj}")
-        start_cutting(selected_obj, selected_task)
+        # if not selected_task or not selected_obj:
+        #     rospy.logerr("Please select a task and an object")
+        #     return
+        # print(f"Starting {selected_task} on {selected_obj}")
+        # start_cutting(selected_obj, selected_task)
+        start_cutting()
 
     # output.clear_output()
 
@@ -64,7 +65,7 @@ def setup_task_object_widgets():
 def start_demo():
     global output
     output = Output()
-    setup_task_object_widgets()
+    #setup_task_object_widgets()
     execute_button = Button(description="Start Demo")
     BulletWorld("DIRECT")
     VizMarkerPublisher(interval=0.1)

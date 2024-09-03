@@ -7,7 +7,7 @@ from pycram.ros.viz_marker_publisher import VizMarkerPublisher
 from pycram.resolver.action.SPARQL import SPARQL
 from IPython.display import display, HTML, clear_output
 
-def start_cutting(obj, technique):
+def start_cutting(obj="obo:FOODON_03301710", technique="cut:Slicing"):
     display(HTML('<img src="https://i.gifer.com/XVo6.gif" alt="Hourglass animation" width="50">'))
 
 
