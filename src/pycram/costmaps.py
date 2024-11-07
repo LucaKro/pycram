@@ -12,11 +12,13 @@ from matplotlib import colors
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from probabilistic_model.probabilistic_circuit.nx.distributions import UniformDistribution
 from probabilistic_model.probabilistic_circuit.nx.probabilistic_circuit import ProbabilisticCircuit, ProductUnit
+from probabilistic_model.probabilistic_circuit.nx.helper import fully_factorized
 from random_events.interval import Interval, reals, closed_open, closed
 from random_events.product_algebra import Event, SimpleEvent
 from random_events.variable import Continuous
 from tqdm import tqdm
 from typing_extensions import Tuple, List, Optional, Iterator
+
 from scipy.spatial.transform import Rotation as R
 
 from .datastructures.enums import Grasp
@@ -904,6 +906,22 @@ class GaussianCostmap(Costmap):
         circular_mask = distance_from_center <= radius
         masked_grid = np.where(circular_mask, grid, 0)
         return masked_grid
+
+
+class CoolerGaussianCostmap(Costmap):
+
+    model: ProbabilisticCircuit
+    origin: Pose
+    x: Continuous = Continuous("relative_x")
+    y: Continuous = Continuous("relative_y")
+
+
+    def __init__(self, origin: Pose, scale: float):
+        self.origin = origin
+        mean = {self.x: origin.position.x, self.y: origin.position.y}
+        variance = {self.x: scale, self.y: scale}
+        self.model = fully_factorized([self.x, self.y], mean, variance)
+
 
 
 class DirectionalCostmap(Costmap):
