@@ -10,32 +10,27 @@ import random_events
 import tf
 from matplotlib import colors
 from nav_msgs.msg import OccupancyGrid, MapMetaData
-from probabilistic_model.probabilistic_circuit.nx.distributions import UniformDistribution
-from probabilistic_model.probabilistic_circuit.nx.probabilistic_circuit import ProbabilisticCircuit, ProductUnit
-from probabilistic_model.probabilistic_circuit.nx.helper import fully_factorized
+
+from probabilistic_model.probabilistic_circuit.nx.helper import uniform_measure_of_event, fully_factorized
+from probabilistic_model.probabilistic_circuit.nx.probabilistic_circuit import ProbabilisticCircuit
 from random_events.interval import Interval, reals, closed_open, closed
 from random_events.product_algebra import Event, SimpleEvent
 from random_events.variable import Continuous
-from tqdm import tqdm
+from tf.transformations import quaternion_from_matrix
 from typing_extensions import Tuple, List, Optional, Iterator
 
-from scipy.spatial.transform import Rotation as R
-
+from .datastructures.dataclasses import AxisAlignedBoundingBox, BoxVisualShape, Color
 from .datastructures.enums import Grasp
-from .ros.ros_tools import wait_for_message
-from .datastructures.dataclasses import AxisAlignedBoundingBox
-from .datastructures.pose import Pose
+from .datastructures.pose import Pose, Transform
+
 from .datastructures.world import UseProspectionWorld
 from .datastructures.world import World
 from .description import Link
 from .local_transformer import LocalTransformer
-from .ros_utils.viz_marker_publisher import CostmapPublisher
-from .world_concepts.world_object import Object
 
-from .datastructures.pose import Pose, Transform
-from .datastructures.world import World
-from .datastructures.dataclasses import AxisAlignedBoundingBox, BoxVisualShape, Color
-from tf.transformations import quaternion_from_matrix
+from .ros_utils.viz_marker_publisher import CostmapPublisher
+from .ros.ros_tools import wait_for_message
+from .world_concepts.world_object import Object
 
 
 @dataclass
@@ -915,7 +910,6 @@ class CoolerGaussianCostmap(Costmap):
     x: Continuous = Continuous("relative_x")
     y: Continuous = Continuous("relative_y")
 
-
     def __init__(self, origin: Pose, scale: float):
         self.origin = origin
         mean = {self.x: origin.position.x, self.y: origin.position.y}
@@ -1191,14 +1185,8 @@ class AlgebraicSemanticCostmap(SemanticCostmap):
         self.original_valid_area = self.valid_area.simple_sets[0]
 
     def as_distribution(self) -> ProbabilisticCircuit:
-        p_xy = ProductUnit()
-        u_x = UniformDistribution(self.x, self.original_valid_area[self.x].simple_sets[0])
-        u_y = UniformDistribution(self.y, self.original_valid_area[self.y].simple_sets[0])
-        p_xy.add_subcircuit(u_x)
-        p_xy.add_subcircuit(u_y)
-
-        conditional, _ = p_xy.conditional(self.valid_area)
-        return conditional.probabilistic_circuit
+        model = uniform_measure_of_event(self.valid_area)
+        return model
 
     def sample_to_pose(self, sample: np.ndarray) -> Pose:
         """
