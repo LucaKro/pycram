@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from tf import transformations
 from typing_extensions import List, Union, Callable, Optional, Type
 
-from .location_designator import CostmapLocation
+from .location_designator import CostmapLocation, ProbabilisticCostmapLocation
 from .motion_designator import MoveJointsMotion, MoveGripperMotion, MoveArmJointsMotion, MoveTCPMotion, MoveMotion, \
     LookingMotion, DetectingMotion, OpeningMotion, ClosingMotion
 from .object_designator import ObjectDesignatorDescription, BelieveObject, ObjectPart
@@ -869,8 +869,8 @@ class TransportActionPerformable(ActionAbstract):
     def perform(self) -> None:
         robot_desig = BelieveObject(names=[RobotDescription.current_robot_description.name])
         ParkArmsActionPerformable(Arms.BOTH).perform()
-        pickup_loc = CostmapLocation(target=self.object_designator, reachable_for=robot_desig.resolve(),
-                                     reachable_arm=self.arm)
+        pickup_loc = ProbabilisticCostmapLocation(target=self.object_designator, reachable_for=robot_desig.resolve(),
+                                                  reachable_arm=self.arm)
         # Tries to find a pick-up position for the robot that uses the given arm
         pickup_pose = None
         for pose in pickup_loc:

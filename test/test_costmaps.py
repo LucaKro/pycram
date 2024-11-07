@@ -7,7 +7,7 @@ from random_events.product_algebra import Event, SimpleEvent
 from random_events.interval import *
 
 from bullet_world_testcase import BulletWorldTestCase
-from pycram.costmaps import OccupancyCostmap, AlgebraicSemanticCostmap
+from pycram.costmaps import OccupancyCostmap, AlgebraicSemanticCostmap, CoolerGaussianCostmap
 from pycram.datastructures.pose import Pose
 import plotly.graph_objects as go
 
@@ -42,9 +42,8 @@ class CostmapTestCase(BulletWorldTestCase):
 
         events = []
         for rectangle in rectangles:
-
             event = SimpleEvent({x: open(rectangle.x_lower, rectangle.x_upper),
-                           y: open(rectangle.y_lower, rectangle.y_upper)})
+                                 y: open(rectangle.y_lower, rectangle.y_upper)})
             events.append(event)
 
         event = Event(*events)
@@ -88,5 +87,27 @@ class SemanticCostmapTestCase(BulletWorldTestCase):
             self.assertTrue(costmap.valid_area.contains([sample.position.x, sample.position.y]))
 
 
-class OntologySemanticLocationTestCase(unittest.TestCase):
-    ...
+class GaussianCostmapTestCase(unittest.TestCase):
+    pose: Pose
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pose = Pose([0, 0, 0], [0, 0, 0, 1])
+
+    def test_costmap_playground(self):
+        cm = CoolerGaussianCostmap(self.pose, 1.)
+        left = SimpleEvent({cm.x: closed(-np.inf, 0)}).as_composite_set()
+        cm.model, _ = cm.model.conditional(left)
+        samples = cm.model.sample(10000)
+        likelihoods = cm.model.likelihood(samples)
+
+        # cm_pr2, cm_tiago
+        # cm_total = 0.5 cm_pr2 + 0.5 cm_tiago
+        # rx, ry, robot_type
+        # cm.model.conditional(robot_type)
+
+        # sort samples by likelihood
+        samples = [x for _, x in sorted(zip(likelihoods, samples), key=lambda pair: pair[0], reverse=True)]
+        print(samples)
+        fig = go.Figure(cm.model.plot(surface=True), cm.model.plotly_layout())
+        fig.show()

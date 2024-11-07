@@ -1,6 +1,11 @@
-import dataclasses
+from dataclasses import dataclass
 import time
 
+import numpy as np
+import random_events
+import plotly.graph_objects as go
+from random_events.product_algebra import SimpleEvent, Event
+from random_events.variable import Continuous
 from typing_extensions import List, Union, Iterable, Optional, Callable
 
 from .object_designator import ObjectDesignatorDescription, ObjectPart
@@ -8,7 +13,8 @@ from ..datastructures.world import World, UseProspectionWorld
 from ..local_transformer import LocalTransformer
 from ..world_reasoning import link_pose_for_joint_config
 from ..designator import DesignatorError, LocationDesignatorDescription
-from ..costmaps import OccupancyCostmap, VisibilityCostmap, SemanticCostmap, GaussianCostmap, DirectionalCostmap
+from ..costmaps import OccupancyCostmap, VisibilityCostmap, SemanticCostmap, GaussianCostmap, DirectionalCostmap, \
+    CoolerGaussianCostmap
 from ..datastructures.enums import JointType, Arms, Grasp
 from ..pose_generator_and_validator import PoseGenerator, visibility_validator, reachability_validator
 from ..robot_description import RobotDescription
@@ -20,7 +26,7 @@ class Location(LocationDesignatorDescription):
     Default location designator which only wraps a pose.
     """
 
-    @dataclasses.dataclass
+    @dataclass
     class Location(LocationDesignatorDescription.Location):
         pass
 
@@ -49,7 +55,7 @@ class ObjectRelativeLocation(LocationDesignatorDescription):
     Location relative to an object
     """
 
-    @dataclasses.dataclass
+    @dataclass
     class Location(LocationDesignatorDescription.Location):
         relative_pose: Pose
         """
@@ -105,7 +111,7 @@ class CostmapLocation(LocationDesignatorDescription):
     Uses costmaps to create locations based on complex constraints, such as reachability and visibility.
     """
 
-    @dataclasses.dataclass
+    @dataclass
     class Location(LocationDesignatorDescription.Location):
         reachable_arms: List[Arms]
         """
@@ -177,9 +183,11 @@ class CostmapLocation(LocationDesignatorDescription):
 
         occupancy = OccupancyCostmap(0.32, False, 300, map_resolution, ground_pose)
         final_map = occupancy
+        final_map.publish()
 
         if self.reachable_for:
             gaussian = GaussianCostmap(200, 1.5, map_resolution, ground_pose, True, 0.5)
+            gaussian.publish(weighted=True)
             final_map += gaussian
 
         if self.visible_for:
@@ -189,6 +197,7 @@ class CostmapLocation(LocationDesignatorDescription):
         if self.used_grasp is not None and self.used_grasp not in [Grasp.TOP, Grasp.BOTTOM]:
             directional = DirectionalCostmap(200, self.used_grasp, map_resolution, target_pose,
                                              self.object_in_hand is not None)
+            directional.publish()
 
             final_map *= directional
 
@@ -221,12 +230,141 @@ class CostmapLocation(LocationDesignatorDescription):
                     yield self.Location(maybe_pose, arms)
 
 
+from random_events.interval import SimpleInterval, closed
+
+class ProbabilisticCostmapLocation(LocationDesignatorDescription):
+    """
+    Uses costmaps to create locations based on complex constraints, such as reachability and visibility.
+    """
+
+    @dataclass
+    class Location(LocationDesignatorDescription.Location):
+        reachable_arms: List[Arms]
+        """
+        List of arms with which the pose can be reached, is only used when the 'rechable_for' parameter is used
+        """
+
+    def __init__(self, target: Union[Pose, ObjectDesignatorDescription.Object],
+                 reachable_for: Optional[ObjectDesignatorDescription.Object] = None,
+                 visible_for: Optional[ObjectDesignatorDescription.Object] = None,
+                 reachable_arm: Optional[Arms] = None, resolver: Optional[Callable] = None,
+                 used_grasp: Optional[Grasp] = None,  object_in_hand: Optional[ObjectDesignatorDescription.Object] = None):
+        """
+        Location designator that uses costmaps as base to calculate locations for complex constrains like reachable or
+        visible. In case of reachable the resolved location contains a list of arms with which the location is reachable.
+
+        :param target: Location for which visibility or reachability should be calculated
+        :param reachable_for: Object for which the reachability should be calculated, usually a robot
+        :param visible_for: Object for which the visibility should be calculated, usually a robot
+        :param reachable_arm: An optional arm with which the target should be reached
+        :param resolver: An alternative specialized_designators that returns a resolved location for the given input of this description
+        :param used_grasp: The grasp that should be used for the target
+        :param object_in_hand: The object that is in the hand of the robot
+        """
+        super().__init__(resolver)
+        self.target: Union[Pose, ObjectDesignatorDescription.Object] = target
+        self.reachable_for: ObjectDesignatorDescription.Object = reachable_for
+        self.visible_for: ObjectDesignatorDescription.Object = visible_for
+        self.reachable_arm: Optional[Arms] = reachable_arm
+        self.used_grasp: Optional[Grasp] = used_grasp
+        self.object_in_hand: Optional[ObjectDesignatorDescription.Object] = object_in_hand
+
+    def ground(self) -> Location:
+        """
+        Default specialized_designators which returns the first result from the iterator of this instance.
+
+        :return: A resolved location
+        """
+        return next(iter(self))
+
+    def __iter__(self):
+        """
+        Generates positions that satisfy the given constraints from a costmap.
+
+        This method creates a costmap by merging different costmaps, each serving a specific purpose.
+        An occupancy costmap is always used as the base. Depending on the provided constraints,
+        a visibility costmap and/or a Gaussian costmap are also merged with the base costmap.
+
+        Once the costmaps are merged, a pose generator produces candidate poses from the costmap.
+        Each candidate pose is then validated against the specified constraints.
+        If all validators pass, the pose is considered valid and yielded.
+
+        Yields:
+            Location: An instance of `CostmapLocation.Location` containing a valid position that satisfies the given constraints.
+        """
+        if isinstance(self.target, ObjectDesignatorDescription.Object):
+            target_pose = self.target.world_object.get_pose()
+        else:
+            target_pose = self.target.copy()
+
+        # ground_pose = [[target_pose[0][0], target_pose[0][1], 0], target_pose[1]]
+        ground_pose = Pose(target_pose.position_as_list())
+        ground_pose.position.z = 0
+
+        relative_x: Continuous = Continuous("relative_x")
+        relative_y: Continuous = Continuous("relative_y")
+
+        cm = CoolerGaussianCostmap(ground_pose, 1.)
+        left = SimpleEvent({cm.x: closed(-np.inf, 0)}).as_composite_set()
+        cm.model, _ = cm.model.conditional(left)
+
+        # cm_pr2, cm_tiago
+        # cm_total = 0.5 cm_pr2 + 0.5 cm_tiago
+        # rx, ry, robot_type
+        # cm.model.conditional(robot_type)
+
+        ocm = OccupancyCostmap(distance_to_obstacle=0.4, from_ros=False, size=200, resolution=0.1,
+                               origin=ground_pose)
+
+        # convert rectangles to events
+        events = []
+        for rectangle in ocm.partitioning_rectangles():
+            event = SimpleEvent(
+                {relative_x: random_events.interval.open(rectangle.x_lower, rectangle.x_upper),
+                 relative_y: random_events.interval.open(rectangle.y_lower, rectangle.y_upper)})
+            events.append(event)
+        event = Event(*events)
+
+        cm.model, _ = cm.model.conditional(event)
+        samples = cm.model.sample(10000)
+        likelihoods = cm.model.likelihood(samples)
+
+        # sort samples by likelihood
+        samples = [x for _, x in sorted(zip(likelihoods, samples), key=lambda pair: pair[0], reverse=True)]
+        print(samples)
+        fig = go.Figure(cm.model.plot(surface=True), cm.model.plotly_layout())
+        fig.show()
+
+
+        # with UseProspectionWorld():
+        #     for maybe_pose in PoseGenerator(final_map, number_of_samples=600):
+        #         is_valid = True
+        #         arms = None
+        #         if self.visible_for:
+        #             visible_prospection_object = World.current_world.get_prospection_object_for_object(self.target.world_object)
+        #             is_valid = is_valid and visibility_validator(maybe_pose, test_robot, visible_prospection_object,
+        #                                                World.current_world)
+        #         if self.reachable_for:
+        #             hand_links = []
+        #             for description in RobotDescription.current_robot_description.get_manipulator_chains():
+        #                 hand_links += description.end_effector.links
+        #
+        #             is_reachable, arms = reachability_validator(maybe_pose, test_robot, target_pose,
+        #                                                  allowed_collision={test_robot: hand_links})
+        #             if self.reachable_arm:
+        #                 is_valid = is_valid and is_reachable and self.reachable_arm in arms
+        #             else:
+        #                 is_valid = is_valid and is_reachable
+        #         if is_valid:
+        #             yield self.Location(maybe_pose, arms)
+
+
 class AccessingLocation(LocationDesignatorDescription):
     """
     Location designator which describes poses used for opening drawers
     """
 
-    @dataclasses.dataclass
+    @dataclass
     class Location(LocationDesignatorDescription.Location):
         arms: List[Arms]
         """
@@ -320,7 +458,7 @@ class SemanticCostmapLocation(LocationDesignatorDescription):
     Locations over semantic entities, like a table surface
     """
 
-    @dataclasses.dataclass
+    @dataclass
     class Location(LocationDesignatorDescription.Location):
         pass
 
