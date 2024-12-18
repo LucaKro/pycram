@@ -1,6 +1,8 @@
 # used for delayed evaluation of typing until python 3.11 becomes mainstream
 from __future__ import annotations
 
+import math
+from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
@@ -124,8 +126,8 @@ class RobotDescription:
         self.base_link = base_link
         self.torso_link = torso_link
         self.torso_joint = torso_joint
-        with suppress_stdout_stderr():
-            self.urdf_object = load_urdf_silently(urdf_path)
+        # with suppress_stdout_stderr():
+        self.urdf_object = load_urdf_silently(urdf_path)
         self.kinematic_chains: Dict[str, KinematicChainDescription] = {}
         self.cameras: Dict[str, CameraDescription] = {}
         self.links: List[str] = [l.name for l in self.urdf_object.links]
@@ -416,7 +418,7 @@ class RobotDescription:
 
         return distance
 
-    def set_max_reach(self, start_link: str, end_link: str, factor: float = 0.65):
+    def set_max_reach(self, start_link: str = None, end_link: str = None, factor: float = 0.65):
         """
         Calculates and sets the maximum reach of the robot by summing the lengths of
         links in the kinematic chain between the specified start and end links. The
@@ -430,6 +432,11 @@ class RobotDescription:
         """
         robot = self.urdf_object
         max_reach = 0.0
+        manip = self.get_manipulator_chains()[0]
+        if not start_link:
+            start_link = manip.start_link
+        if not end_link:
+            end_link = manip.end_effector.tool_frame
 
         kinematic_chain = robot.get_chain(start_link, end_link, joints=False)
         joints = robot.get_chain(start_link, end_link, links=False)
@@ -452,8 +459,7 @@ class RobotDescription:
             float: The maximum reach of the robot.
         """
         if not self.max_reach:
-            manip = self.get_manipulator_chains()[0]
-            self.set_max_reach(manip.start_link, manip.end_effector.tool_frame)
+            self.set_max_reach()
 
         return self.max_reach
 
@@ -890,8 +896,10 @@ class EndEffectorDescription:
             Grasp.LEFT: [0, 0, -0.707, 0.707],
             Grasp.RIGHT: [0, 0, 0.707, 0.707],
             Grasp.TOP: [0, 0.707, 0, 0.707],
-            Grasp.BOTTOM: [0, -0.707, 0, 0.707]
+            Grasp.BOTTOM: [0, -0.707, 0, 0.707],
         }
+
+        horizontal_rotations = [-0.7071, 0, 0, 0.7071]
 
         all_orientations = {}
 
@@ -908,6 +916,92 @@ class EndEffectorDescription:
                                        grasp_orientation_z, grasp_orientation_w]
 
         self.grasps = all_orientations
+
+    def generate_all_grasp_orientations(self, front_orientation: List[float]):
+        """
+        Generates all grasp orientations based on a given front-facing orientation,
+        covering combinations of side grasps (front, back, left, right),
+        top/bottom grasps, and horizontal rotation options.
+
+        Args:
+            front_orientation (List[float]): A quaternion representing the front-facing orientation
+                                             as [x, y, z, w].
+
+        """
+
+        def mult(q1: List[float], q2: List[float]) -> List[float]:
+            """
+            Multiplies two quaternions q1 and q2 (q1 * q2).
+
+            Args:
+                q1, q2 (List): Quaternions in [x, y, z, w] format.
+
+            Returns:
+                List: Resulting quaternion [x, y, z, w].
+            """
+            x1, y1, z1, w1 = q1
+            x2, y2, z2, w2 = q2
+            return [
+                w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+                w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+                w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+            ]
+
+        def normalize(q: List[float]) -> List[float]:
+            """Normalizes a quaternion to unit length."""
+            norm = math.sqrt(sum(comp ** 2 for comp in q))
+            return [comp / norm for comp in q]
+
+        sqrt2over2 = math.sqrt(2) / 2
+
+        relative_rotations = {
+            Grasp.FRONT: [0, 0, 0, 1],
+            Grasp.BACK: [0, 0, 1, 0],
+            Grasp.LEFT: [0, 0, -sqrt2over2, sqrt2over2],
+            Grasp.RIGHT: [0, 0, sqrt2over2, sqrt2over2],
+        }
+
+        top_rotation = [0, sqrt2over2, 0, sqrt2over2]
+        bottom_rotation = [0, -sqrt2over2, 0, sqrt2over2]
+        horizontal_rotation = [sqrt2over2, 0, 0, sqrt2over2]
+
+        all_orientations = {}
+
+        for side_grasp, relative_rotation in relative_rotations.items():
+            for top_bot_grasp, tb_rotation in [
+                (None, None),
+                (Grasp.TOP, top_rotation),
+                (Grasp.BOTTOM, bottom_rotation)
+            ]:
+                for horizontal in [False, True]:
+                    rotation = [0, 0, 0, 1]
+
+                    rotation = mult(rotation, relative_rotation)
+
+                    if tb_rotation:
+                        rotation = mult(rotation, tb_rotation)
+
+                    if horizontal:
+                        rotation = mult(rotation, horizontal_rotation)
+
+                    orientation = mult(rotation, front_orientation)
+                    orientation = normalize(orientation)
+
+                    all_orientations[(side_grasp, top_bot_grasp, horizontal)] = orientation
+
+        self.grasps = all_orientations
+
+    def get_grasp(self, grasp: Grasp, top_bot_grasp: Grasp = None, horizontal: bool = False) -> List[float]:
+        """
+        Retrieves the orientation of the end effector for a specific grasp.
+
+        :param grasp: Grasp from the Grasp enum
+        :param top_bot_grasp: Top or bottom grasp from the Grasp enum
+        :param horizontal: If True, the horizontal rotation is applied
+        :return: List of floats representing the orientation
+        """
+        return self.grasps[(grasp, top_bot_grasp, horizontal)]
 
     @property
     def links(self) -> List[str]:
@@ -926,3 +1020,37 @@ class EndEffectorDescription:
         :return: List of joint names
         """
         return self.joint_names
+
+
+@dataclass
+class GraspDescription:
+    """
+    Represents a grasp description with a side grasp, top face, and orientation alignment.
+
+    Attributes:
+        side_face (Grasp): The primary side grasp face.
+        top_face (Optional[Grasp]): The top or bottom face of the object, or None if not applicable.
+        horizontal (bool): Indicates if the grasp is aligned horizontally.
+    """
+    side_face: Grasp
+    top_face: Optional[Grasp] = None
+    horizontal: bool = False
+
+    def __post_init__(self):
+        allowed_side_faces = {Grasp.FRONT, Grasp.BACK, Grasp.LEFT, Grasp.RIGHT}
+        if self.side_face not in allowed_side_faces:
+            raise ValueError(f"Invalid value for side_face: {self.side_face}. Allowed values are {allowed_side_faces}")
+        allowed_top_faces = {Grasp.TOP, Grasp.BOTTOM, None}
+        if self.top_face not in allowed_top_faces:
+            raise ValueError(f"Invalid value for top_face: {self.top_face}. Allowed values are {allowed_top_faces}")
+        if not isinstance(self.horizontal, bool):
+            raise ValueError(f"Invalid value for horizontal: {self.horizontal}. Must be a boolean value.")
+
+    def as_list(self) -> List[Union[Grasp, Optional[Grasp], bool]]:
+        """
+        Returns the GraspConfig as a list.
+
+        Returns:
+            List[Union[Grasp, Optional[Grasp], bool]]: A list representation of the grasp description.
+        """
+        return [self.side_face, self.top_face, self.horizontal]
