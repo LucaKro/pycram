@@ -1,19 +1,61 @@
-import tf
-import numpy as np
+import functools
+import random
 
-from .datastructures.enums import Grasp
+import numpy as np
+import tf
+from typing_extensions import Tuple, List, Union, Dict, Iterable, Callable
+
+from .costmaps import Costmap
+from .datastructures.enums import Grasp, ObjectType, Arms
+from .datastructures.pose import Pose, Transform
 from .datastructures.world import World
+from .designator import ObjectDesignatorDescription
+from .designators.object_designator import ObjectPart
+from .external_interfaces.ik import request_ik
+from .helper import adjust_grasp_for_object_rotation, calculate_grasp_offset, \
+    calculate_rim_grasp, translate_relative_to_object
+from .local_transformer import LocalTransformer
+from .plan_failures import IKError
+from .robot_description import RobotDescription
 from .ros.viz_marker_publisher import AxisMarkerPublisher
 from .world_concepts.world_object import Object
 from .world_reasoning import contact
-from .costmaps import Costmap
-from .local_transformer import LocalTransformer
-from .datastructures.pose import Pose, Transform
-from .robot_description import RobotDescription
-from .external_interfaces.ik import request_ik
-from .plan_failures import IKError
-from .utils import _apply_ik, translate_relative_to_object
-from typing_extensions import Tuple, List, Union, Dict, Iterable
+
+
+class OrientationGenerator:
+
+    @staticmethod
+    def generate_origin_orientation(position: List[float], origin: Pose) -> List[float]:
+        """
+        Generates an orientation such that the robot faces the origin of the costmap.
+
+        :param position: The position in the costmap, already converted to the world coordinate frame.
+        :param origin: The origin of the costmap, the point which the robot should face.
+        :return: A quaternion of the calculated orientation.
+        """
+        if RobotDescription.current_robot_description.name == "iai_donbot":
+            angle = np.arctan2(position[1] - origin.position.y, position[0] - origin.position.x) - np.pi / 2
+        else:
+            angle = np.arctan2(position[1] - origin.position.y, position[0] - origin.position.x) + np.pi
+        quaternion = list(tf.transformations.quaternion_from_euler(0, 0, angle, axes="sxyz"))
+        return quaternion
+
+    @staticmethod
+    def generate_random_orientation(*_, rng: random.Random = random.Random(42)) -> List[float]:
+        """
+        Generates a random orientation rotated around the z-axis (yaw).
+        A random angle is sampled using a provided RNG instance to ensure reproducibility.
+
+        Args:
+            *_: Ignored parameters to maintain compatibility with other orientation generators.
+            rng (random.Random): Random number generator instance for reproducible sampling.
+
+        Returns:
+            List[float]: A quaternion representing the random orientation.
+        """
+        random_yaw = rng.uniform(0, 2 * np.pi)
+        quaternion = list(tf.transformations.quaternion_from_euler(0, 0, random_yaw, axes="sxyz"))
+        return quaternion
 
 
 class PoseGenerator:
@@ -32,7 +74,9 @@ class PoseGenerator:
     Override the orientation generator with a custom generator, which will be used regardless of the current_orientation_generator.
     """
 
-    def __init__(self, costmap: Costmap, number_of_samples=100, orientation_generator=None):
+    def __init__(self, costmap: Costmap, number_of_samples=100,
+                 orientation_generator: Callable = OrientationGenerator.generate_origin_orientation,
+                 seed=42):
         """
         Initializes a PoseGenerator for sampling poses from a given costmap.
 
@@ -49,14 +93,11 @@ class PoseGenerator:
             None
         """
 
-        if not PoseGenerator.current_orientation_generator:
-            PoseGenerator.current_orientation_generator = PoseGenerator.generate_orientation
-
         self.costmap = costmap
         self.number_of_samples = number_of_samples
         self.orientation_generator = orientation_generator if orientation_generator else PoseGenerator.current_orientation_generator
-        if PoseGenerator.override_orientation_generator:
-            self.orientation_generator = PoseGenerator.override_orientation_generator
+        self.orientation_generator = orientation_generator
+        self.seed = seed
 
     def __iter__(self) -> Iterable:
         """
@@ -68,18 +109,19 @@ class PoseGenerator:
             Pose: A Pose object containing position and orientation.
         """
 
-        np.random.seed(42)
+        np.random.seed(self.seed)
 
         if self.number_of_samples == -1:
             self.number_of_samples = self.costmap.map.flatten().shape[0]
         number_of_samples = min(self.number_of_samples, self.costmap.map.size)
 
         height, width = self.costmap.map.shape
-        center = np.array([height // 2, width // 2])
+        odd_height = height % 2 == 1
+        odd_width = width % 2 == 1
+        center = np.array([height // 2 + odd_height, width // 2 + odd_width])
 
         flat_values = self.costmap.map.flatten()
 
-        # Filter non-zero weights and adjust number_of_samples accordingly
         non_zero_indices = np.nonzero(flat_values)[0]
         non_zero_weights = flat_values[non_zero_indices]
         number_of_samples = min(number_of_samples, len(non_zero_indices))
@@ -114,24 +156,52 @@ class PoseGenerator:
     def height_generator() -> float:
         pass
 
-    @staticmethod
-    def generate_orientation(position: List[float], origin: Pose) -> List[float]:
-        """
-        This method generates the orientation for a given position in a costmap. The
-        orientation is calculated such that the robot faces the origin of the costmap.
-        This generation is done by simply calculating the arctan between the position,
-        in the costmap, and the origin of the costmap.
 
-        :param position: The position in the costmap. This position is already converted to the world coordinate frame.
-        :param origin: The origin of the costmap. This is also the point which the robot should face.
-        :return: A quaternion of the calculated orientation
+class MultiCostmapPoseGenerator:
+    def __init__(self, costmaps: List[Costmap], seed: int = None):
         """
-        if RobotDescription.current_robot_description.name == "iai_donbot":
-            angle = np.arctan2(position[1] - origin.position.y, position[0] - origin.position.x) - np.pi/2
-        else:
-            angle = np.arctan2(position[1] - origin.position.y, position[0] - origin.position.x) + np.pi
-        quaternion = list(tf.transformations.quaternion_from_euler(0, 0, angle, axes="sxyz"))
-        return quaternion
+        A pose generator that samples poses from multiple costmaps, interleaving poses between
+        costmaps based on their proportional weights.
+
+        Args:
+            costmaps (List[Costmap]): List of costmaps from which poses should be sampled.
+            seed (int, optional): Seed for the random number generator. Defaults to None.
+        """
+        self.costmaps = costmaps
+        self.seed = seed
+        self.weights = self.calculate_weights()
+        self.rng = random.Random(self.seed)
+        self.orientation_generator = functools.partial(
+            OrientationGenerator.generate_random_orientation, rng=self.rng
+        )
+        self.generators = [iter(PoseGenerator(costmap, number_of_samples=-1, seed=self.seed,
+                                              orientation_generator=self.orientation_generator)) for costmap in
+                           costmaps]
+
+    def calculate_weights(self):
+        """
+        Calculate sampling weights for each costmap based purely on its area (height * width).
+        """
+        costmap_areas = [cm.map.shape[0] * cm.map.shape[1] for cm in self.costmaps]
+        total_area = sum(costmap_areas)
+        return [area / total_area for area in costmap_areas]
+
+    def __iter__(self):
+        """
+        Iteratively samples poses from the combined costmaps, interleaving poses between costmaps.
+        """
+        active_generators = self.generators.copy()  # Track active generators
+
+        while active_generators:
+            chosen_index = self.rng.choices(range(len(active_generators)), weights=self.weights, k=1)[0]
+            chosen_generator = active_generators[chosen_index]
+
+            try:
+                yield next(chosen_generator), active_generators[chosen_index].gi_frame.f_locals[
+                    'self'].costmap.link.name
+            except StopIteration:
+                active_generators.pop(chosen_index)
+                self.weights.pop(chosen_index)
 
 
 def visibility_validator(pose: Pose,
@@ -153,13 +223,11 @@ def visibility_validator(pose: Pose,
     """
     robot_pose = robot.get_pose()
     if isinstance(object_or_pose, Object):
-        robot.set_pose(pose)
         camera_pose = robot.get_link_pose(RobotDescription.current_robot_description.get_camera_frame())
         robot.set_pose(Pose([100, 100, 0], [0, 0, 0, 1]))
         ray = world.ray_test(camera_pose.position_as_list(), object_or_pose.get_position_as_list())
         res = ray == object_or_pose.id
     else:
-        robot.set_pose(pose)
         camera_pose = robot.get_link_pose(RobotDescription.current_robot_description.get_camera_frame())
         robot.set_pose(Pose([100, 100, 0], [0, 0, 0, 1]))
         # TODO: Check if this is correct
@@ -170,114 +238,179 @@ def visibility_validator(pose: Pose,
 
 
 def _in_contact(robot: Object, obj: Object, allowed_collision: Dict[Object, List[str]],
-                allowed_robot_links: List[str]) -> bool:
+                allowed_robot_links: List[str], safety_distance: float = 0.0) -> bool:
     """
-    Checks if the specified robot is in contact with a given object, while accounting for
-    allowed collisions on specific links.
+    Checks if the specified robot is in contact with or dangerously close to a given object,
+    while accounting for allowed collisions on specific links.
 
     Args:
         robot (Object): The robot to check for contact.
         obj (Object): The object to check for contact with the robot.
-        allowed_collision (Dict[Object, List[str]]): A dictionary of objects with lists of
-                                                     link names allowed to collide.
-        allowed_robot_links (List[str]): A list of robot link names that are allowed to be in
-                                         contact with the object.
+        allowed_collision (Dict[Object, List[str]]): Allowed collisions with link names.
+        allowed_robot_links (List[str]): Robot link names allowed to contact the object.
+        safety_distance (float): Minimum safe distance between the robot and the object.
 
     Returns:
-        bool: True if the robot is in contact with the object on non-allowed links, False otherwise.
+        bool: True if the robot is in contact or too close, False otherwise.
     """
     in_contact, contact_links = contact(robot, obj, return_links=True)
-    if not in_contact:
-        return False
+    if in_contact:
+        allowed_links = allowed_collision.get(obj.id, [])
+        for link in contact_links:
+            if link[0].name not in allowed_robot_links and link[1].name not in allowed_links:
+                return True
 
-    allowed_links = allowed_collision.get(obj, [])
-
-    for link in contact_links:
-        if link[0].name not in allowed_robot_links and link[1].name not in allowed_links:
-            return True
+    min_distance = World.current_world.calculate_min_distance(robot, obj, allowed_robot_links, safety_distance)
+    if abs(min_distance) < safety_distance:
+        return True
 
     return False
 
 
-
-def reachability_validator(pose: Pose,
-                           robot: Object,
+def reachability_validator(robot: Object,
                            target: Union[Object, Pose],
-                           allowed_collision: Dict[Object, List] = None,
-                           translation_value: float = 0.1) -> Tuple[bool, List]:
+                           arms: List[Arms],
+                           object_in_hand: ObjectDesignatorDescription.Object = None,
+                           used_grasp_config: List[Union[Grasp, bool]] = None,
+                           translation_value: float = 0.1,
+                           retract_first=None,
+                           with_lifting=False) -> Tuple[bool, List, List]:
     """
     Validates if a target position is reachable for a given pose candidate.
 
     This method uses an IK solver to determine if a valid solution exists for the robot
-    standing at the specified pose. If a solution is found, the validator returns `True`;
+    standing at the specified pose. The collisions allowed are the links of the currently used end-effector.
+    If a solution is found, the validator returns `True`;
     otherwise, it returns `False`.
 
     Args:
-        pose (Pose): The pose candidate for which reachability should be validated.
         robot (Object): The robot object in the world for which reachability is being validated.
         target (Union[Object, Pose]): The target position or object that should be reachable.
-        allowed_collision (Dict[Object, List], optional): A dictionary of objects with which
-            the robot is allowed to collide, where each object maps to a list of its constituent links.
+        arms (List[Arms]): The arms for which reachability should be validated.
+        object_in_hand (ObjectDesignatorDescription.Object, optional): The object that the robot is holding, if there is one.
+        used_grasp_config (List[Union[Grasp, bool]], optional): The grasp configuration used for the validation.
+        translation_value (float, optional): The distance by which the target position should be translated.
+        retract_first (bool, optional): Whether the retract pose should be validated before or after validating if the final target is reachable.
+        with_lifting (bool, optional): Whether the robot should lift the object after validating reachability.
 
     Returns:
-        Tuple[bool, List]: A tuple where the first element is `True` if the target is reachable
+        Tuple[bool, List, List]: A tuple where the first element is `True` if the target is reachable
         and `False` otherwise. The second element is a list of details about the solution or issues
-        encountered during validation.
+        encountered during validation. The third element is a list of Dicts of joint states for the robot, used if the solution
+        of this validation is needed later calculations.
     """
-    if type(target) == Object:
-        target = target.get_pose()
+    if isinstance(target, ObjectPart.Object):
+        prospection_world = World.current_world.get_prospection_object_for_object(target.world_object)
+        goal_pose = prospection_world.get_link_pose(target.name)
+    elif isinstance(target, ObjectDesignatorDescription.Object):
+        goal_pose = target.world_object.get_pose()
+    else:
+        goal_pose = target
+        target = None
 
-    robot.set_pose(pose)
-    # manipulator_descs = list(
-    #    filter(lambda chain: isinstance(chain[1], ManipulatorDescription), robot_description.chains.items()))
-    manipulator_descs = RobotDescription.current_robot_description.get_manipulator_chains()
+    if not arms:
+        arms = [Arms.LEFT, Arms.RIGHT]
 
-    # TODO Make orientation adhere to grasping orientation
+    manipulator_descs = [RobotDescription.current_robot_description.get_arm_chain(arm) for arm in arms]
+
+    side_grasp, top_grasp, horizontal = used_grasp_config.side_face, used_grasp_config.top_face, used_grasp_config.horizontal
     res = False
-    arms = []
+    valid_arms = []
+    validated_joint_states = []
+
+    if object_in_hand:
+        in_contact = collision_check(robot,
+                                     {object_in_hand.world_object.id: object_in_hand.world_object.root_link_name})
+    else:
+        in_contact = collision_check(robot, {})
+
+    if in_contact:
+        return res, valid_arms, validated_joint_states
+
     for description in manipulator_descs:
 
         joints = description.joints
         tool_frame = description.end_effector.tool_frame
+        target_pose = goal_pose.copy()
 
-        # TODO Make orientation adhere to grasping orientation
-        in_contact = False
+        if object_in_hand:
+            local_transformer = LocalTransformer()
+            object_pose = World.current_world.get_prospection_object_for_object(object_in_hand.world_object).get_pose()
+            tcp_to_object = local_transformer.transform_pose(object_pose,
+                                                             robot.get_link_tf_frame(
+                                                                 RobotDescription.current_robot_description.get_arm_chain(
+                                                                     description.arm_type).get_tool_frame()))
+
+            target_pose = target_pose.to_transform("target").inverse_times(
+                tcp_to_object.to_transform("object")).to_pose()
+        else:
+            grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(
+                description.arm_type).end_effector.get_grasp(side_grasp, top_grasp, horizontal)
+            palm_axis = RobotDescription.current_robot_description.get_palm_axis()
+            if hasattr(target, "obj_type") and target.obj_type == ObjectType.BOWL:
+                rim_offset = calculate_rim_grasp(target.world_object.get_object_dimensions(), side_grasp)
+                rim_direction = RobotDescription.current_robot_description.get_arm_chain(
+                    description.arm_type).end_effector.get_grasp(side_grasp, None, False)
+                rim_adjustment = adjust_grasp_for_object_rotation(target_pose, rim_direction)
+                rim_pose = translate_relative_to_object(rim_adjustment, palm_axis, rim_offset)
+                target_pose.position = rim_pose.position
+            target_pose = adjust_grasp_for_object_rotation(target_pose, grasp_orientation)
+
+            if hasattr(target, "world_object"):
+                grasp_offset = calculate_grasp_offset(target.world_object.get_object_dimensions(), description.arm_type,
+                                                      top_grasp if top_grasp else side_grasp)
+                target_pose = translate_relative_to_object(target_pose, palm_axis, grasp_offset)
+            retract_first = True if retract_first is None else retract_first
+
+        palm_axis = RobotDescription.current_robot_description.get_palm_axis()
+        retract_target_pose = translate_relative_to_object(target_pose, palm_axis, translation_value)
+        retract_target_pose = LocalTransformer().transform_pose(retract_target_pose, "map")
 
         joint_state_before_ik = robot.get_positions_of_all_joints()
+
+        hand_links = [link for link in description.end_effector.links]
+
+        allowed_collision = {robot: hand_links}
+
         try:
+
             # test the possible solution and apply it to the robot
-            pose, joint_states = request_ik(target, robot, joints, tool_frame)
+            pose, joint_states = request_ik(retract_target_pose if retract_first else target_pose, robot, joints,
+                                            tool_frame)
             robot.set_pose(pose)
             robot.set_joint_positions(joint_states)
             # _apply_ik(robot, resp, joints)
 
             in_contact = collision_check(robot, allowed_collision)
 
-            if not in_contact:  # only check for retract pose if pose worked
+            if not in_contact:
 
-                palm_axis = RobotDescription.current_robot_description.get_palm_axis()
-
-                retract_target_pose = translate_relative_to_object(target, palm_axis, translation_value)
-
-                retract_target_pose = LocalTransformer().transform_pose(retract_target_pose, "map")
-
-                marker = AxisMarkerPublisher()
-                marker.publish([pose, retract_target_pose], length=0.3)
-
-                pose, joint_states = request_ik(retract_target_pose, robot, joints, tool_frame)
-                robot.set_pose(pose)
-                robot.set_joint_positions(joint_states)
+                pose2, joint_states2 = request_ik(target_pose if retract_first else retract_target_pose, robot,
+                                                  joints,
+                                                  tool_frame)
+                robot.set_pose(pose2)
+                robot.set_joint_positions(joint_states2)
                 # _apply_ik(robot, resp, joints)
                 in_contact = collision_check(robot, allowed_collision)
-            if not in_contact:
-                arms.append(description.arm_type)
+
+                if not in_contact and with_lifting:
+                    target_pose.position.z += 0.03
+                    pose3, joint_states3 = request_ik(target_pose, robot, joints, tool_frame)
+                    robot.set_pose(pose3)
+                    robot.set_joint_positions(joint_states3)
+                    in_contact = collision_check(robot, allowed_collision)
+
+                if not in_contact:
+                    valid_arms.append(description.arm_type)
+                    validated_joint_states.append(joint_states)
+
         except IKError:
             pass
         finally:
             robot.set_joint_positions(joint_state_before_ik)
-    if arms:
+    if valid_arms:
         res = True
-    return res, arms
+    return res, valid_arms, validated_joint_states
 
 
 def collision_check(robot: Object, allowed_collision: Dict[Object, List]):
@@ -301,6 +434,8 @@ def collision_check(robot: Object, allowed_collision: Dict[Object, List]):
     for obj in World.current_world.objects:
         if obj.name == "floor":
             continue
-        in_contact= _in_contact(robot, obj, allowed_collision, allowed_robot_links)
+        in_contact = _in_contact(robot, obj, allowed_collision, allowed_robot_links)
+        if in_contact:
+            break
 
     return in_contact
