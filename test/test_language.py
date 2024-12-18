@@ -3,7 +3,7 @@ import time
 import unittest
 from pycram.designators.action_designator import *
 from pycram.designators.object_designator import BelieveObject
-from pycram.datastructures.enums import ObjectType, State
+from pycram.datastructures.enums import ObjectType, State, TorsoState
 from pycram.failure_handling import RetryMonitor
 from pycram.fluent import Fluent
 from pycram.plan_failures import PlanFailure, NotALanguageExpression
@@ -215,7 +215,7 @@ class LanguageTestCase(BulletWorldTestCase):
 
     def test_perform_desig(self):
         act = NavigateAction([Pose([1, 1, 0])])
-        act2 = MoveTorsoAction([0.3])
+        act2 = MoveTorsoAction([TorsoState.HIGH])
         act3 = ParkArmsAction([Arms.BOTH])
 
         plan = act + act2 + act3

@@ -32,6 +32,7 @@ class BulletWorldTestCase(unittest.TestCase):
                             ObjectDescription, pose=Pose([1.3, 0.7, 0.95]))
         ProcessModule.execution_delay = False
         cls.viz_marker_publisher = VizMarkerPublisher()
+        cls.prospection = VizMarkerPublisher(as_prospection_world=True)
         OntologyManager(SOMA_ONTOLOGY_IRI)
 
     def setUp(self):

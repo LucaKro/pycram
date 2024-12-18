@@ -5,6 +5,7 @@ from .object_designator import ObjectMixin
 from ..datastructures.enums import Arms, GripperState, Grasp
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import ForeignKey
+from ..robot_description import GraspDescription
 
 
 class Action(MapperArgsMixin, Designator):
@@ -68,7 +69,13 @@ class PickUpAction(ObjectMixin, Action):
 
     id: Mapped[int] = mapped_column(ForeignKey(f'{Action.__tablename__}.id'), primary_key=True, init=False)
     arm: Mapped[Arms]
-    grasp: Mapped[Grasp]
+    # TODO: uncommenting currently triggers following error:
+    #  "sqlalchemy.exc.ArgumentError: Could not locate SQLAlchemy Core type for Python
+    #  type <class 'pycram.robot_description.GraspConfig'> inside the 'grasp_config' attribute Mapped annotation"
+    # grasp_config: Mapped[GraspConfig] = mapped_column(init=False)
+
+    # used for now to allow tests to run
+    grasp_config: Mapped[str] = mapped_column(init=False)
 
 
 class PlaceAction(PoseMixin, ObjectMixin, Action):

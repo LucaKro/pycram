@@ -2,6 +2,7 @@ from typing_extensions import List, Tuple, Optional, Union, Dict
 
 import numpy as np
 
+from .datastructures.enums import Grasp
 from .external_interfaces.ik import try_to_reach, try_to_reach_with_grasp
 from .datastructures.pose import Pose, Transform
 from .robot_description import RobotDescription, KinematicChainDescription
@@ -210,24 +211,24 @@ def blocking(
         pose_or_object: Union[Object, Pose],
         robot: Object,
         gripper_chain: KinematicChainDescription,
-        grasp: str = None) -> Union[List[Object], None]:
+        grasp: Grasp = None) -> Union[List[Object], None]:
     """
     Checks if any objects are blocking another object when a robot tries to pick it. This works
     similar to the reachable predicate. First the inverse kinematics between the robot and the object will be
     calculated and applied. Then it will be checked if the robot is in contact with any object except the given one.
     If the given pose or Object is not reachable None will be returned
 
-    :param pose_or_object: The object or pose for which blocking objects should be found
-    :param robot: The robot Object who reaches for the object
-    :param gripper_chain: The Kinematic Chain of the used end effector of the robot
-    :param grasp: The grasp type with which the object should be grasped
-    :return: A list of objects the robot is in collision with when reaching for the specified object or None if the pose or object is not reachable.
+    Args:
+        pose_or_object (Union[Object, Pose]): The Pose or Object for which blocking should be checked
+        robot (Object): The robot that should reach for the position
+        gripper_chain (KinematicChainDescription): The kinematic chain used to reach the position
+        grasp (Grasp): The grasp that should be used
     """
 
     prospection_robot = World.current_world.get_prospection_object_for_object(robot)
     with UseProspectionWorld():
         if grasp:
-            grasp_orientation = gripper_chain.end_effector.grasps[grasp]
+            grasp_orientation = gripper_chain.end_effector.get_grasp(grasp, None, False)
             try_to_reach_with_grasp(pose_or_object, prospection_robot, gripper_chain.get_tool_frame(), grasp_orientation)
         else:
             try_to_reach(pose_or_object, prospection_robot, gripper_chain.get_tool_frame())

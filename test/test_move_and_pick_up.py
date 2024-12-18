@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 
 from bullet_world_testcase import BulletWorldTestCase
-from pycram.datastructures.enums import ObjectType, Arms, Grasp
+from pycram.datastructures.enums import ObjectType, Arms, Grasp, TorsoState
 from pycram.designator import ObjectDesignatorDescription
 from pycram.designators.action_designator import MoveTorsoActionPerformable
 from pycram.designators.specialized_designators.probabilistic.probabilistic_action import (MoveAndPickUp,
@@ -49,7 +49,7 @@ class MoveAndPickUpTestCase(BulletWorldTestCase):
         with simulated_robot:
             for action in move_and_pick:
                 try:
-                    MoveTorsoActionPerformable(0.3).perform()
+                    MoveTorsoActionPerformable(TorsoState.HIGH).perform()
                     action.perform()
                     return  # Success
                 except PlanFailure as e:

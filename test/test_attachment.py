@@ -1,9 +1,11 @@
 import time
 
+from geometry_msgs.msg import Point
+
 from bullet_world_testcase import BulletWorldTestCase
 from pycram.datastructures.enums import ObjectType
 from pycram.datastructures.pose import Pose
-from pycram.datastructures.world import UseProspectionWorld
+from pycram.datastructures.world import UseProspectionWorld, World
 from pycram.world_concepts.world_object import Object
 
 
@@ -46,31 +48,33 @@ class TestAttachment(BulletWorldTestCase):
         self.assertEqual(new_milk_pos.x, milk_pos.x)
 
     def test_prospection_object_attachments_not_changed_with_real_object(self):
-        milk_2 = Object("milk_2", ObjectType.MILK, "milk.stl", pose=Pose([1.3, 1, 0.9]))
-        cereal_2 = Object("cereal_2", ObjectType.BREAKFAST_CEREAL, "breakfast_cereal.stl",
+        milk_2 = Object("milk_3", ObjectType.MILK, "milk.stl", pose=Pose([1.3, 1, 0.9]))
+        cereal_2 = Object("cereal_3", ObjectType.BREAKFAST_CEREAL, "breakfast_cereal.stl",
                         pose=Pose([1.3, 0.7, 0.95]))
         time.sleep(0.05)
         milk_2.attach(cereal_2)
         time.sleep(0.05)
         prospection_milk = self.world.get_prospection_object_for_object(milk_2)
-        # self.assertTrue(cereal_2 not in prospection_milk.attachments)
+
         prospection_cereal = self.world.get_prospection_object_for_object(cereal_2)
-        # self.assertTrue(prospection_cereal in prospection_milk.attachments)
-        self.assertTrue(prospection_milk.attachments == {})
+
+        self.assertTrue(prospection_cereal in prospection_milk.attachments)
 
         # Assert that when prospection object is moved, the real object is not moved
         with UseProspectionWorld():
             prospection_milk_pos = prospection_milk.get_position()
             cereal_pos = cereal_2.get_position()
             prospection_cereal_pos = prospection_cereal.get_position()
+            assumed_prospection_cereal_pos = Point(prospection_cereal_pos.x, prospection_cereal_pos.y, prospection_cereal_pos.z)
+            assumed_prospection_cereal_pos.x += 1
 
             # Move prospection milk object
             prospection_milk_pos.x += 1
             prospection_milk.set_position(prospection_milk_pos)
+            new_prospection_cereal_pos = prospection_cereal.get_position()
 
-            # Prospection object should not move
-            new_prospection_cereal_pose = prospection_cereal.get_position()
-            self.assertTrue(new_prospection_cereal_pose == prospection_cereal_pos)
+            # Prospection object should
+            self.assertTrue(new_prospection_cereal_pos == assumed_prospection_cereal_pos)
 
             # Real cereal object should not move
             new_cereal_pos = cereal_2.get_position()
@@ -80,18 +84,38 @@ class TestAttachment(BulletWorldTestCase):
         self.world.remove_object(milk_2)
         self.world.remove_object(cereal_2)
 
-    def test_no_attachment_in_prospection_world(self):
+    def test_attachment_mirrored_in_prospection_world(self):
         milk_2 = Object("milk_2", ObjectType.MILK, "milk.stl", pose=Pose([1.3, 1, 0.9]))
         cereal_2 = Object("cereal_2", ObjectType.BREAKFAST_CEREAL, "breakfast_cereal.stl",
                           pose=Pose([1.3, 0.7, 0.95]))
-
-        milk_2.attach(cereal_2)
-
         prospection_milk = self.world.get_prospection_object_for_object(milk_2)
         prospection_cereal = self.world.get_prospection_object_for_object(cereal_2)
 
         self.assertTrue(prospection_milk.attachments == {})
         self.assertTrue(prospection_cereal.attachments == {})
+
+        milk_2.attach(cereal_2)
+
+        self.assertTrue(len(prospection_milk.attachments) == 1)
+        self.assertTrue(len(prospection_cereal.attachments) == 1)
+
+        self.world.remove_object(milk_2)
+        self.world.remove_object(cereal_2)
+
+    def test_propection_attachment_not_mirrored_in_real_world(self):
+        milk_2 = Object("milk_2", ObjectType.MILK, "milk.stl", pose=Pose([1.3, 1, 0.9]))
+        cereal_2 = Object("cereal_2", ObjectType.BREAKFAST_CEREAL, "breakfast_cereal.stl",
+                          pose=Pose([1.3, 0.7, 0.95]))
+        prospection_milk = self.world.get_prospection_object_for_object(milk_2)
+        prospection_cereal = self.world.get_prospection_object_for_object(cereal_2)
+
+        prospection_milk.attach(prospection_cereal)
+
+        self.assertTrue(len(prospection_milk.attachments) == 1)
+        self.assertTrue(len(prospection_cereal.attachments) == 1)
+
+        self.assertTrue(milk_2.attachments == {})
+        self.assertTrue(cereal_2.attachments == {})
 
         self.world.remove_object(milk_2)
         self.world.remove_object(cereal_2)

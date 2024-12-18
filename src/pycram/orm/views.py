@@ -134,7 +134,7 @@ class PickUpWithContextView(base):
 
     __table__ = view("PickUpWithContextView", Base.metadata,
                      (select(PickUpAction.id.label("id"), PickUpAction.arm.label("arm"),
-                             PickUpAction.grasp.label("grasp"), RobotState.torso_height.label("torso_height"),
+                             PickUpAction.grasp_config.label("grasp_config"), RobotState.torso_height.label("torso_height"),
                              __relative_x.label("relative_x"), __relative_y.label("relative_y"),
                              Quaternion.x.label("quaternion_x"), Quaternion.y.label("quaternion_y"),
                              Quaternion.z.label("quaternion_z"), Quaternion.w.label("quaternion_w"),

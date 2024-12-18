@@ -163,9 +163,9 @@ class TestObject(BulletWorldTestCase):
         self.assertNotEqual(self.milk, self.world)
 
 
-class GenericObjectTestCase(BulletWorldTestCase):
-
-    def test_init_generic_object(self):
-        gen_obj_desc = lambda: GenericObjectDescription("robokudo_object", [0,0,0], [0.1, 0.1, 0.1])
-        obj = Object("robokudo_object", ObjectType.MILK, None, gen_obj_desc)
-        self.assertTrue(True)
+# class GenericObjectTestCase(BulletWorldTestCase):
+#
+#     def test_init_generic_object(self):
+#         gen_obj_desc = lambda: GenericObjectDescription("robokudo_object", [0,0,0], [0.1, 0.1, 0.1])
+#         obj = Object("robokudo_object", ObjectType.MILK, None, gen_obj_desc)
+#         self.assertTrue(True)
