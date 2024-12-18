@@ -34,8 +34,6 @@ class BulletWorld(World):
 
     extension: str = ObjectDescription.get_file_extension()
 
-    allow_publish_debug_poses: bool = False
-
     # Check is for sphinx autoAPI to be able to work in a CI workflow
     if rosgraph.is_master_online():  # and "/pycram" not in rosnode.get_node_names():
         rospy.init_node('pycram')
@@ -180,6 +178,35 @@ class BulletWorld(World):
     def get_contact_points_between_two_objects(self, obj1: Object, obj2: Object) -> List:
         self.perform_collision_detection()
         return p.getContactPoints(obj1.id, obj2.id, physicsClientId=self.id)
+
+    @staticmethod
+    def calculate_min_distance(object1: Object, object2: Object,
+                               allowed_robot_links: List[str], safety_distance: float) -> float:
+        """
+        Calculates the minimum distance between two objects, excluding allowed links.
+
+        Args:
+            object1 (Object): The first object (e.g., the robot).
+            object2 (Object): The second object.
+            allowed_robot_links (List[str]): Robot link names allowed to contact the object.
+            safety_distance (float): The safety distance to be considered.
+
+        Returns:
+            float: Minimum distance between the two objects, ignoring allowed links.
+        """
+        closest_points = p.getClosestPoints(object1.id, object2.id, distance=safety_distance,
+                                            physicsClientId=World.current_world.id)
+
+        min_distance = float('inf')
+        for point in closest_points:
+            link1_name = object1.get_link_by_id(point[3]).name
+
+            if link1_name in allowed_robot_links:
+                continue
+
+            min_distance = min(min_distance, point[8])
+
+        return min_distance
 
     def reset_joint_position(self, joint: ObjectDescription.Joint, joint_position: str) -> None:
         p.resetJointState(joint.object_id, joint.id, joint_position, physicsClientId=self.id)
