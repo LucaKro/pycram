@@ -877,46 +877,6 @@ class EndEffectorDescription:
         """
         self.grasps.update(orientations)
 
-    def generate_all_grasp_orientations_from_front_grasp(self, front_orientation: List[float]):
-        """
-        Generates all grasp orientations based on a given front-facing orientation.
-
-        This method calculates orientations for six grasp directions (front, back, left, right,
-        top, and bottom) relative to a specified front-facing orientation. Each orientation
-        is computed by applying a quaternion multiplication between the front orientation and
-        predefined relative rotations.
-
-        Args:
-            front_orientation (List[float]): A quaternion representing the front-facing orientation
-                                             as [x, y, z, w].
-        """
-        relative_rotations = {
-            Grasp.FRONT: [0, 0, 0, 1],
-            Grasp.BACK: [0, 0, 1, 0],
-            Grasp.LEFT: [0, 0, -0.707, 0.707],
-            Grasp.RIGHT: [0, 0, 0.707, 0.707],
-            Grasp.TOP: [0, 0.707, 0, 0.707],
-            Grasp.BOTTOM: [0, -0.707, 0, 0.707],
-        }
-
-        horizontal_rotations = [-0.7071, 0, 0, 0.7071]
-
-        all_orientations = {}
-
-        for grasp, relative_rotation in relative_rotations.items():
-            x1, y1, z1, w1 = front_orientation
-            x2, y2, z2, w2 = relative_rotation
-
-            grasp_orientation_x = w2 * x1 + x2 * w1 + y2 * z1 - z2 * y1
-            grasp_orientation_y = w2 * y1 - x2 * z1 + y2 * w1 + z2 * x1
-            grasp_orientation_z = w2 * z1 + x2 * y1 - y2 * x1 + z2 * w1
-            grasp_orientation_w = w2 * w1 - x2 * x1 - y2 * y1 - z2 * z1
-
-            all_orientations[grasp] = [grasp_orientation_x, grasp_orientation_y,
-                                       grasp_orientation_z, grasp_orientation_w]
-
-        self.grasps = all_orientations
-
     def generate_all_grasp_orientations(self, front_orientation: List[float]):
         """
         Generates all grasp orientations based on a given front-facing orientation,
