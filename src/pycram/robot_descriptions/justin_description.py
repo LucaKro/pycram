@@ -172,12 +172,17 @@ justin_description.set_neck("head1_joint", "head2_joint")
 
 
 ################################# Grasps ##################################
-left_gripper.generate_all_grasp_orientations_from_front_grasp([0.707, -0.707, 0.707, -0.707])
-right_gripper.generate_all_grasp_orientations_from_front_grasp([0.707, 0.707, 0.707, 0.707])
+orientation = [0.707, -0.707, 0.707, -0.707]
+left_gripper.generate_all_grasp_orientations(orientation)
+
+orientation = [0.707, 0.707, 0.707, 0.707]
+right_gripper.generate_all_grasp_orientations(orientation)
+
 
 ################################# Additionals ##################################
 justin_description.set_costmap_offset(0.5)
 justin_description.set_palm_axis([0, 0, 1])
+justin_description.set_max_reach("base_link", "l_gripper_tool_frame", factor=0.4)
 
 # Add to RobotDescriptionManager
 rdm = RobotDescriptionManager()

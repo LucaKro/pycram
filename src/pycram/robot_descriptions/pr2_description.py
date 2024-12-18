@@ -12,7 +12,7 @@ pr2_description = RobotDescription("pr2", "base_link", "torso_lift_link", "torso
                                    filename)
 
 ################################## Left Arm ##################################
-left_arm = KinematicChainDescription("left", "torso_lift_link", "l_wrist_roll_link",
+left_arm = KinematicChainDescription("left", "base_link", "l_wrist_roll_link",
                                      pr2_description.urdf_object, arm_type=Arms.LEFT)
 left_arm.add_static_joint_states("park", {'l_shoulder_pan_joint': 1.712,
                                           'l_shoulder_lift_joint': -0.264,
@@ -35,7 +35,7 @@ left_gripper.opening_distance = 0.548
 left_arm.end_effector = left_gripper
 
 ################################## Right Arm ##################################
-right_arm = KinematicChainDescription("right", "torso_lift_link", "r_wrist_roll_link",
+right_arm = KinematicChainDescription("right", "base_link", "r_wrist_roll_link",
                                       pr2_description.urdf_object, arm_type=Arms.RIGHT)
 right_arm.add_static_joint_states("park", {'r_shoulder_pan_joint': -1.712,
                                            'r_shoulder_lift_joint': -0.256,
@@ -80,12 +80,14 @@ pr2_description.set_neck("head_pan_joint", "head_tilt_joint")
 
 
 ################################# Grasps ##################################
-right_gripper.generate_all_grasp_orientations_from_front_grasp([0, 0, 0, 1])
-left_gripper.generate_all_grasp_orientations_from_front_grasp([0, 0, 0, 1])
+orientation = [0, 0, 0, 1]
+right_gripper.generate_all_grasp_orientations(orientation)
+left_gripper.generate_all_grasp_orientations(orientation)
 
 ################################## Additionals ##################################
 pr2_description.set_max_reach("torso_lift_link", "l_gripper_tool_frame")
 pr2_description.set_palm_axis([1, 0, 0])
+pr2_description.set_costmap_offset(0)
 
 
 # Add to RobotDescriptionManager

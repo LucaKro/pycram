@@ -117,8 +117,8 @@ donbot_description.set_neck("ur5_wrist_2_joint", "ur5_wrist_1_joint")
 
 
 ################################# Grasps ##################################
-left_gripper.generate_all_grasp_orientations_from_front_grasp([0.707, -0.707, 0.707, -0.707])
-
+orientation = [0.707, -0.707, 0.707, -0.707]
+left_gripper.generate_all_grasp_orientations(orientation)
 # Add to RobotDescriptionManager
 rdm = RobotDescriptionManager()
 rdm.register_description(donbot_description)

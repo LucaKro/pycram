@@ -13,10 +13,9 @@ armar_description = RobotDescription("Armar6", "world", "torso", "torso_joint",
 left_arm = KinematicChainDescription("left", "world", "arm_t8_r0",
                                      armar_description.urdf_object, arm_type=Arms.LEFT)
 
-left_arm.add_static_joint_states("park", {"torso_joint": -0.15,
-                                          "arm_t12_joint_r0": 0,
-                                          "arm_t23_joint_r0": 0,
-                                          "arm_t34_joint_r0": 1.5,
+left_arm.add_static_joint_states("park", {"arm_t12_joint_r0": 0.15,
+                                          "arm_t23_joint_r0": 0.25,
+                                          "arm_t34_joint_r0": -0.2,
                                           "arm_t45_joint_r0": 0.5,
                                           "arm_t56_joint_r0": 2.0,
                                           "arm_t67_joint_r0": 1.5,
@@ -65,13 +64,12 @@ left_arm.end_effector = left_gripper
 right_arm = KinematicChainDescription("right", "world", "arm_t8_r1",
                                       armar_description.urdf_object, arm_type=Arms.RIGHT)
 
-right_arm.add_static_joint_states("park", {"torso_joint": -0.15,
-                                           "arm_t12_joint_r1": 0,
-                                           "arm_t23_joint_r1": 0,
-                                           "arm_t34_joint_r1": 1.5,
-                                           "arm_t45_joint_r1": 2.64,
+right_arm.add_static_joint_states("park", {"arm_t12_joint_r1": -0.15,
+                                           "arm_t23_joint_r1": -0.25,
+                                           "arm_t34_joint_r1": -0.2,
+                                           "arm_t45_joint_r1": 2.5,
                                            "arm_t56_joint_r1": 2.0,
-                                           "arm_t67_joint_r1": 1.6415,
+                                           "arm_t67_joint_r1": 1.75,
                                            "arm_t78_joint_r1": 0,
                                            "arm_t8_joint_r1": 0})
 
@@ -137,11 +135,13 @@ armar_description.set_neck("neck_1_yaw", "neck_2_pitch")
 
 
 ################################# Grasps ##################################
-left_gripper.generate_all_grasp_orientations_from_front_grasp([0.707, 0.707, 0.707, 0.707])
-right_gripper.generate_all_grasp_orientations_from_front_grasp([0.707, 0.707, 0.707, 0.707])
+orientation = [0.707, 0.707, 0.707, 0.707]
+right_gripper.generate_all_grasp_orientations(orientation)
+left_gripper.generate_all_grasp_orientations(orientation)
+
 
 ################################# Additionals ##################################
-armar_description.set_costmap_offset(0.3)
+armar_description.set_costmap_offset(0)
 armar_description.set_max_reach("torso", "left_tool_frame")
 armar_description.set_palm_axis([0, 0, 1])
 
