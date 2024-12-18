@@ -169,7 +169,9 @@ class Costmap:
         """
         indices = np.argwhere(self.map > 0)
         height, width = self.map.shape
-        center = np.array([height // 2, width // 2])
+        odd_height = height % 2 == 1
+        odd_width = width % 2 == 1
+        center = np.array([height // 2 + odd_height, width // 2 + odd_width])
 
         origin_to_map = self.origin.to_transform("origin").invert()
 
@@ -660,7 +662,8 @@ class VisibilityCostmap(Costmap):
 
         self.world = world if world else World.current_world
         self.map = np.zeros((size, size))
-        self.size = size
+        is_odd = size % 2 == 1
+        self.size = size + is_odd
         self.resolution = resolution
         # for pr2 = 1.27
         self.max_height: float = max_height
@@ -668,7 +671,7 @@ class VisibilityCostmap(Costmap):
         self.min_height: float = min_height
         self.origin: Pose = Pose() if not origin else origin
         self._generate_map()
-        Costmap.__init__(self, resolution, size, size, self.origin, self.map)
+        Costmap.__init__(self, resolution, self.size, self.size, self.origin, self.map)
 
     def _create_images(self) -> List[np.ndarray]:
         """
@@ -863,7 +866,7 @@ class GaussianCostmap(Costmap):
         self.origin: Pose = Pose() if not origin else origin
         Costmap.__init__(self, resolution, num_pixels, num_pixels, self.origin, self.map)
 
-    def _gaussian_costmap(self, mean: int, std: float) -> np.ndarray:
+    def _gaussian_costmap(self, size: int, std: float) -> np.ndarray:
         """
         Generates a 2D Gaussian ring costmap centered at the origin, where the peak is
         located at a specified distance from the center.
@@ -872,7 +875,7 @@ class GaussianCostmap(Costmap):
         allowing for a peak intensity at a specific radius from the center.
 
         Args:
-            mean (int): The side length of the square costmap in pixels.
+            size (int): The side length of the square costmap in pixels.
             std (float): The standard deviation (sigma) of the Gaussian distribution.
 
         Returns:
@@ -880,8 +883,9 @@ class GaussianCostmap(Costmap):
         """
         radius_in_pixels = self.distance / self.resolution
 
-        y, x = np.ogrid[:mean, :mean]
-        center = (mean - 1) / 2.0
+        y, x = np.ogrid[:size, :size]
+        even = size % 2 == 0
+        center = (size - even) / 2.0
         distance_from_center = np.sqrt((x - center) ** 2 + (y - center) ** 2)
 
         ring_costmap = np.exp(-((distance_from_center - radius_in_pixels) ** 2) / (2 * std ** 2))
@@ -917,7 +921,7 @@ class DirectionalCostmap(Costmap):
     positive and negative y-directions, while excluding the positive x-direction.
     """
 
-    def __init__(self, size: int, face: Grasp, resolution: Optional[float] = 0.02,
+    def __init__(self, size: int, side_face: Grasp, resolution: Optional[float] = 0.02,
                  origin: Optional[Pose] = None, has_object: bool = False):
         """
         Initializes a directional costmap with Gaussian distribution focused in specific
@@ -935,7 +939,7 @@ class DirectionalCostmap(Costmap):
         """
         self.size = size / 100.0
         self.resolution = resolution
-        self.face = face
+        self.side_face = side_face
         self.has_object = has_object
         num_pixels = int(self.size / self.resolution)
         self.origin = origin.copy() if origin else Pose()
@@ -964,13 +968,9 @@ class DirectionalCostmap(Costmap):
             Grasp.BACK: [0, 0, 1, 0],
             Grasp.LEFT: [0, 0, -0.707, 0.707],
             Grasp.RIGHT: [0, 0, 0.707, 0.707],
-            Grasp.TOP: [0, 0.707, 0, 0.707],
-            Grasp.BOTTOM: [0, -0.707, 0, 0.707]
         }
-        # currently doesnt really do anything for TOP and BOTTOM, but didnt make any problems either
-        # and i havent had the time to investigate further or think of better handling for these cases
-        # TODO: investigate and improve handling for TOP and BOTTOM
-        face_rotation = relative_rotations[self.face]
+
+        face_rotation = relative_rotations[self.side_face]
 
         object_rotation = R.from_quat(object_orientation)
         face_rotation = R.from_quat(face_rotation)
@@ -978,7 +978,6 @@ class DirectionalCostmap(Costmap):
         combined_orientation = combined_rotation.as_quat()
 
         map = np.ones((num_pixels, num_pixels))
-
 
         rotation = R.from_quat(combined_orientation)
         rotation_matrix = rotation.as_matrix() if self.has_object else rotation.inv().as_matrix()
@@ -1003,7 +1002,7 @@ class SemanticCostmap(Costmap):
     table surface.
     """
 
-    def __init__(self, object, urdf_link_name, size=100, resolution=0.02, world=None):
+    def __init__(self, object, urdf_link_name, buffer_from_edge_in_cm=10, resolution=0.02, world=None):
         """
         Creates a semantic costmap for the given parameter. The semantic costmap will be on top of the link of the given
         Object.
@@ -1018,6 +1017,7 @@ class SemanticCostmap(Costmap):
         self.link: Link = object.get_link(urdf_link_name)
         self.resolution: float = resolution
         self.origin: Pose = object.get_link_pose(urdf_link_name)
+        self.buffer_from_edge_in_cm: int = buffer_from_edge_in_cm * 2
         self.height: int = 0
         self.width: int = 0
         self.map: np.ndarray = []
@@ -1031,8 +1031,8 @@ class SemanticCostmap(Costmap):
         for the link name will be used. Height and width of the final Costmap will be the x and y sizes of the AABB.
         """
         min_p, max_p = self.get_aabb_for_link().get_min_max_points()
-        self.height = int((max_p.x - min_p.x) // self.resolution)
-        self.width = int((max_p.y - min_p.y) // self.resolution)
+        self.height = int(((max_p.x - min_p.x) - self.buffer_from_edge_in_cm / 100) // self.resolution)
+        self.width = int(((max_p.y - min_p.y) - self.buffer_from_edge_in_cm / 100) // self.resolution)
         self.map = np.ones((self.height, self.width))
 
     def get_aabb_for_link(self) -> AxisAlignedBoundingBox:
@@ -1045,11 +1045,14 @@ class SemanticCostmap(Costmap):
         """
         prospection_object = World.current_world.get_prospection_object_for_object(self.object)
         with UseProspectionWorld():
+            original_orientation = prospection_object.get_orientation()
             prospection_object.set_orientation(Pose(orientation=[0, 0, 0, 1]))
             link_pose_trans = self.link.transform
             inverse_trans = link_pose_trans.invert()
-            prospection_object.set_orientation(inverse_trans.to_pose())
-            return self.link.get_axis_aligned_bounding_box()
+            prospection_object.set_orientation(inverse_trans.to_pose().orientation)
+            aabb = self.link.get_axis_aligned_bounding_box()
+            prospection_object.set_orientation(original_orientation)
+        return aabb
 
 
 cmap = colors.ListedColormap(['white', 'black', 'green', 'red', 'blue'])
