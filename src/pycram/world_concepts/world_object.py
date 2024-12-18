@@ -413,15 +413,34 @@ class Object(WorldEntity):
         :param child_link: The link name of the other object.
         :param bidirectional: If the attachment should be a loose attachment.
         """
-        parent_link = self.links[parent_link] if parent_link else self.root_link
-        child_link = child_object.links[child_link] if child_link else child_object.root_link
+        real_parent_link = self.links[parent_link] if parent_link else self.root_link
+        real_child_link = child_object.links[child_link] if child_link else child_object.root_link
 
-        attachment = Attachment(parent_link, child_link, bidirectional)
+        attachment = Attachment(real_parent_link, real_child_link, bidirectional)
 
         self.attachments[child_object] = attachment
         child_object.attachments[self] = attachment.get_inverse()
 
         self.world.attachment_event(self, [self, child_object])
+
+        try:
+            prospection_self = World.current_world.get_prospection_object_for_object(self)
+            prospection_object = World.current_world.get_prospection_object_for_object(child_object)
+        except ValueError:
+            return
+
+        if self == prospection_self or child_object == prospection_object:
+            return
+
+        prospection_parent_link = prospection_self.links[parent_link] if parent_link else prospection_self.root_link
+        prospection_child_link = prospection_object.links[child_link] if child_link else prospection_object.root_link
+
+        attachment = Attachment(prospection_parent_link, prospection_child_link, bidirectional)
+
+        prospection_self.attachments[prospection_object] = attachment
+        prospection_object.attachments[prospection_self] = attachment.get_inverse()
+
+        prospection_self.world.attachment_event(prospection_self, [prospection_self, prospection_object])
 
     def detach(self, child_object: Object) -> None:
         """
@@ -437,6 +456,20 @@ class Object(WorldEntity):
 
         self.world.detachment_event(self, [self, child_object])
 
+        try:
+            prospection_self = World.current_world.get_prospection_object_for_object(self)
+            prospection_object = World.current_world.get_prospection_object_for_object(child_object)
+        except ValueError:
+            return
+
+        if self == prospection_self or child_object == prospection_object:
+            return
+
+        del prospection_self.attachments[prospection_object]
+        del prospection_object.attachments[prospection_self]
+
+        prospection_self.world.detachment_event(prospection_self, [prospection_self, prospection_object])
+
     def detach_all(self) -> None:
         """
         Detach all objects attached to this object.
@@ -444,6 +477,14 @@ class Object(WorldEntity):
         attachments = self.attachments.copy()
         for att in attachments.keys():
             self.detach(att)
+
+        try:
+            prospection_self = World.current_world.get_prospection_object_for_object(self)
+        except ValueError:
+            return
+        attachments = prospection_self.attachments.copy()
+        for att in attachments.keys():
+            prospection_self.detach(att)
 
     def update_attachment_with_object(self, child_object: Object):
         self.attachments[child_object].update_transform_and_constraint()
@@ -815,6 +856,13 @@ class Object(WorldEntity):
         """
         for joint_name, joint_position in joint_poses.items():
             self.joints[joint_name].position = joint_position
+
+        if not self.world.is_prospection_world:
+            try:
+                prospection_self = World.current_world.get_prospection_object_for_object(self)
+            except ValueError:
+                return
+            prospection_self.set_joint_positions(self.get_positions_of_all_joints())
         # self.update_pose()
         self._update_all_links_poses()
         self.update_link_transforms()
@@ -828,6 +876,12 @@ class Object(WorldEntity):
         :param joint_position: The target pose for this joint
         """
         self.joints[joint_name].position = joint_position
+        if not self.world.is_prospection_world:
+            try:
+                prospection_self = World.current_world.get_prospection_object_for_object(self)
+            except ValueError:
+                return
+            prospection_self.set_joint_positions(self.get_positions_of_all_joints())
         self._update_all_links_poses()
         self.update_link_transforms()
         self._set_attached_objects_poses()

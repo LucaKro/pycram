@@ -139,6 +139,11 @@ class World(StateEntity, ABC):
     Global reference for the cache directory, this is used to cache the description files of the robot and the objects.
     """
 
+    allow_publish_debug_poses: bool = False
+    """
+    Global reference for allowing the publishing of debug poses, this is used for debugging purposes.
+    """
+
     def __init__(self, mode: WorldMode, is_prospection_world: bool, simulation_frequency: float):
         """
        Creates a new simulation, the mode decides if the simulation should be a rendered window or just run in the
@@ -1149,6 +1154,12 @@ class WorldSync(threading.Thread):
                 prospection_obj.remove()
                 del self.object_mapping[obj]
                 self.remove_obj_queue.task_done()
+            # @TODO This currently doesn't update fast enough in rapid fire simulations, because the code running in
+            #   parallel may, for example, attach an object to the projection at a wrong distance, which will result in
+            #   faulty assumptions in future calculations. Commented out for now, may be removed in the future.
+            # for obj, prospection_obj in self.object_mapping.items():
+            #     prospection_obj.current_state = obj.current_state
+            #     prospection_obj.set_joint_positions(obj.get_positions_of_all_joints())
             self.check_for_pause()
             time.sleep(wait_time_as_n_simulation_steps * self.world.simulation_time_step)
 
