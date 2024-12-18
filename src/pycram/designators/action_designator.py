@@ -16,17 +16,17 @@ from .motion_designator import MoveJointsMotion, MoveGripperMotion, MoveArmJoint
     LookingMotion, DetectingMotion, OpeningMotion, ClosingMotion
 from .object_designator import ObjectDesignatorDescription, BelieveObject, ObjectPart
 from .. import utils
-from ..helper import calculate_object_faces, adjust_grasp_for_object_rotation, \
-    calculate_grasp_offset
+from ..helper import calculate_grasp_configs, adjust_grasp_for_object_rotation, \
+    calculate_grasp_offset, calculate_rim_grasp, translate_relative_to_object
 from ..local_transformer import LocalTransformer
 from ..plan_failures import ObjectUnfetchable, ReachabilityFailure
-from ..robot_description import RobotDescription
+from ..robot_description import RobotDescription, GraspDescription
 from ..ros.viz_marker_publisher import AxisMarkerPublisher
 from ..tasktree import with_tree
 
 from owlready2 import Thing
 
-from ..datastructures.enums import Arms, Grasp, GripperState, ObjectType
+from ..datastructures.enums import Arms, Grasp, GripperState, ObjectType, TorsoState
 from ..designator import ActionDesignatorDescription
 from ..datastructures.pose import Pose
 from ..datastructures.world import World
@@ -43,8 +43,6 @@ from ..orm.base import Pose as ORMPose
 from ..orm.object_designator import Object as ORMObject
 from ..orm.action_designator import Action as ORMAction
 from dataclasses import dataclass, field
-
-from ..utils import translate_relative_to_object
 
 
 class MoveTorsoAction(ActionDesignatorDescription):
@@ -237,8 +235,7 @@ class PickUpAction(ActionDesignatorDescription):
             obj_desig = self.object_designator_description
         else:
             obj_desig = self.object_designator_description.resolve()
-
-        return PickUpActionPerformable(obj_desig, self.arms[0], self.grasps[0])
+        return PickUpActionPerformable(obj_desig, self.arms[0], self.grasps)
 
 
 class PlaceAction(ActionDesignatorDescription):
@@ -346,8 +343,7 @@ class TransportAction(ActionDesignatorDescription):
         obj_desig = self.object_designator_description \
             if isinstance(self.object_designator_description, ObjectDesignatorDescription.Object) \
             else self.object_designator_description.resolve()
-
-        return TransportActionPerformable(obj_desig, self.arms[0], self.target_locations[0])
+        return TransportActionPerformable(obj_desig, self.arms, self.target_locations[0])
 
 
 class LookAtAction(ActionDesignatorDescription):
@@ -874,8 +870,7 @@ class PouringPerformable(ActionAbstract):
         # Calculate the object's pose in the map frame
         oTm = self.object_.pose
         # Determine the grasp orientation and transform the pose to the base link frame
-        grasp_rotation = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.grasps[
-            Grasp.FRONT]
+        grasp_rotation = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.get_grasp(Grasp.FRONT, None, False)
 
         oTbs = lt.transform_pose(oTm, World.robot.get_link_tf_frame("base_link"))
         oTbs.pose.position.x += 0.009  # was 0,009
@@ -1058,7 +1053,7 @@ class MoveTorsoActionPerformable(ActionAbstract):
     Move the torso of the robot up and down.
     """
 
-    position: float
+    position: TorsoState
     """
     Target position of the torso joint
     """
@@ -1174,9 +1169,9 @@ class PickUpActionPerformable(ActionAbstract):
     The arm enum that should be used for pick up, e.g., Arms.LEFT or Arms.RIGHT.
     """
 
-    grasp: Grasp
+    grasp_config: Optional[GraspDescription] = None
     """
-    The grasp enum that should be used, e.g., Grasp.FRONT or Grasp.RIGHT.
+    The grasp configuration to be used for picking up the object.
     """
 
     object_at_execution: Optional[ObjectDesignatorDescription.Object] = field(init=False)
@@ -1190,28 +1185,42 @@ class PickUpActionPerformable(ActionAbstract):
     ORM class type for this action.
     """
     @with_tree
-    def perform(self) -> None:
+    def perform(self):
         """
         Executes the action to pick up the designated object with specified parameters,
         moving the robot arm to the pre-pick position, grasping, and lifting the object.
         """
+        if not self.grasp_config:
+            self.grasp_config = calculate_grasp_configs(self.object_designator)[0]
+
         # Store the object's data copy at execution
         self.object_at_execution = self.object_designator.frozen_copy()
         robot = World.robot
         # Retrieve object and robot from designators
         object = self.object_designator.world_object
         # oTm = Object Pose in Frame map
-        oTm = object.get_pose()
+        oTm = object.get_pose().copy()
+        palm_axis = RobotDescription.current_robot_description.get_palm_axis()
+        side_grasp, top_grasp, horizontal = self.grasp_config.side_face, self.grasp_config.top_face, self.grasp_config.horizontal
+        grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.get_grasp(side_grasp, top_grasp, horizontal)
+
+        if object.obj_type == ObjectType.BOWL:
+            rim_offset = calculate_rim_grasp(object.get_object_dimensions(), side_grasp)
+            rim_direction = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.get_grasp(side_grasp, None, False)
+            rim_adjustment = adjust_grasp_for_object_rotation(oTm, rim_direction)
+            rim_pose = translate_relative_to_object(rim_adjustment, palm_axis, rim_offset)
+            oTm.position = rim_pose.position
+
+        adjusted_oTm = adjust_grasp_for_object_rotation(oTm, grasp_orientation)
+        if World.current_world.allow_publish_debug_poses:
+            marker = AxisMarkerPublisher()
+            marker.publish([adjusted_oTm], length=0.3)
 
         # Adjust the pose according to the special knowledge of the object designator
         # I think this should be irrelevant now due to the grasp_offset calculation, but not sure, so just commented out for now
         # adjusted_pose = self.object_designator.special_knowledge_adjustment_pose(self.grasp, mTo)
-        adjusted_grasp = adjust_grasp_for_object_rotation(oTm, self.grasp, self.arm)
-        adjusted_oTm = oTm.copy()
-        adjusted_oTm.set_orientation(adjusted_grasp)
 
-        grasp_offset = calculate_grasp_offset(object.get_object_dimensions(), self.arm, self.grasp)
-        palm_axis = RobotDescription.current_robot_description.get_palm_axis()
+        grasp_offset = calculate_grasp_offset(object.get_object_dimensions(), self.arm, top_grasp if top_grasp else side_grasp)
         adjusted_oTm_grasp_pose = translate_relative_to_object(adjusted_oTm, palm_axis, grasp_offset)
 
         translation_value = 0.1  # hardcoded value for now
@@ -1284,17 +1293,13 @@ class PlaceActionPerformable(ActionAbstract):
                 RobotDescription.current_robot_description.get_arm_chain(self.arm).get_tool_frame())
             marker = AxisMarkerPublisher()
             marker.publish([target_diff, self.target_location, gripper_pose], length=0.3)
-
         MoveTCPMotion(target_diff, self.arm).perform()
         MoveGripperMotion(GripperState.OPEN, self.arm).perform()
         World.robot.detach(self.object_designator.world_object)
 
-        retract_pose = local_tf.transform_pose(target_diff, World.robot.get_link_tf_frame(
-            RobotDescription.current_robot_description.get_arm_chain(self.arm).get_tool_frame()))
-
         palm_axis = RobotDescription.current_robot_description.get_palm_axis()
         translation_value = 0.1
-        retract_pose = translate_relative_to_object(retract_pose, palm_axis, translation_value)
+        retract_pose = translate_relative_to_object(target_diff, palm_axis, translation_value)
 
         MoveTCPMotion(retract_pose, self.arm).perform()
 
@@ -1327,9 +1332,9 @@ class TransportActionPerformable(ActionAbstract):
     Describes the object that should be transported.
     """
 
-    arm: Arms
+    arms: List[Arms]
     """
-    The arm designated for transporting the object.
+    The arms that can be used for transporting the object.
     """
 
     target_location: Pose
@@ -1362,35 +1367,27 @@ class TransportActionPerformable(ActionAbstract):
         """
         robot_desig = BelieveObject(names=[RobotDescription.current_robot_description.name])
         ParkArmsActionPerformable(Arms.BOTH).perform()
-
-        if self.object_designator.obj_type == ObjectType.BOWL or self.object_designator.obj_type == ObjectType.SPOON:
-            grasp = calculate_object_faces(self.object_designator)[1]
-        else:
-            grasp = calculate_object_faces(self.object_designator)[0]
-
         pickup_loc = CostmapLocation(
             target=self.object_designator,
             reachable_for=robot_desig.resolve(),
-            reachable_arm=self.arm,
-            used_grasps=[grasp]
+            reachable_arms=self.arms
         )
 
-        # Tries to find a pick-up posotion for the robot that uses the given arm
-        pickup_pose = next((pose for pose in pickup_loc if self.arm in pose.reachable_arms), None)
+        pickup_pose = next((pose for pose in pickup_loc), None)
         if not pickup_pose:
-            raise ObjectUnfetchable(
-                f"No reachable pose found for the robot to grasp the object: {self.object_designator} with arm: {self.arm}"
+            raise ReachabilityFailure(
+                f"No reachable pose found for the robot to grasp the object: {self.object_designator} with arms: {self.arms}"
             )
 
         NavigateActionPerformable(pickup_pose.pose).perform()
-        PickUpActionPerformable(self.object_designator, self.arm, grasp).perform()
+        PickUpActionPerformable(self.object_designator, pickup_pose.reachable_arms[0], pickup_pose.used_grasp_config).perform()
         ParkArmsActionPerformable(Arms.BOTH).perform()
         try:
             place_loc = CostmapLocation(
                 target=self.target_location,
                 reachable_for=robot_desig.resolve(),
-                reachable_arm=self.arm,
-                used_grasps=[grasp],
+                reachable_arms=[pickup_pose.reachable_arms[0]],
+                used_grasp_config=pickup_pose.used_grasp_config,
                 object_in_hand=self.object_designator
             ).resolve()
         except StopIteration:
@@ -1398,7 +1395,7 @@ class TransportActionPerformable(ActionAbstract):
                 f"No reachable location found for the target location: {self.target_location}"
             )
         NavigateActionPerformable(place_loc.pose).perform()
-        PlaceActionPerformable(self.object_designator, self.arm, self.target_location).perform()
+        PlaceActionPerformable(self.object_designator, place_loc.reachable_arms[0], self.target_location).perform()
         ParkArmsActionPerformable(Arms.BOTH).perform()
 
 
@@ -1462,7 +1459,7 @@ class OpenActionPerformable(ActionAbstract):
     The initial location from which the opening action begins.
     """
 
-    goal_location: Optional[AccessingLocation.Location]
+    goal_location: Optional[AccessingLocation.Location] = None
     """
     The final goal location for the opening action.
     """
@@ -1513,7 +1510,7 @@ class CloseActionPerformable(ActionAbstract):
     The initial location from which the closing action begins.
     """
 
-    goal_location: Optional[AccessingLocation.Location]
+    goal_location: Optional[AccessingLocation.Location] = None
     """
     The final goal location for the closing action.
     """
@@ -1581,16 +1578,17 @@ class GraspingActionPerformable(ActionAbstract):
         """
         if isinstance(self.object_desig, ObjectPart.Object):
             object_pose = self.object_desig.part_pose
+            side_grasp, top_grasp, horizontal = (Grasp.FRONT, None, False)
         else:
             object_pose = self.object_desig.world_object.get_pose()
+            side_grasp, top_grasp, horizontal = calculate_grasp_configs(self.object_desig)[0].as_list()
 
         # TODO: there is a difference in which side faces the object during costmap and execution, so hardcoded for now, fix it
         # grasp = calculate_object_faces(self.object_desig)[0]
-        grasp = Grasp.FRONT
 
-        adjusted_grasp = adjust_grasp_for_object_rotation(object_pose, grasp, self.arm)
-        object_pose = object_pose.copy()
-        object_pose.set_orientation(adjusted_grasp)
+        grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.get_grasp(side_grasp, top_grasp, horizontal)
+
+        object_pose = adjust_grasp_for_object_rotation(object_pose, grasp_orientation)
 
         palm_axis = RobotDescription.current_robot_description.get_palm_axis()
         translation_value = 0.05
@@ -1672,4 +1670,4 @@ class MoveAndPickUpPerformable(ActionAbstract):
     def perform(self):
         NavigateActionPerformable(self.standing_position).perform()
         FaceAtPerformable(self.object_designator.pose).perform()
-        PickUpActionPerformable(self.object_designator, self.arm, self.grasp).perform()
+        PickUpActionPerformable(self.object_designator, self.arm, GraspDescription(self.grasp)).perform()
