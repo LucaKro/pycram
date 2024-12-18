@@ -1,12 +1,17 @@
+import math
+
 import numpy as np
 
-from pycram.datastructures.enums import Grasp
+from pycram.datastructures.enums import Grasp, Arms, ObjectType, AxisIdentifier
+from pycram.datastructures.pose import Pose
+from pycram.designator import ObjectDesignatorDescription
 from pycram.local_transformer import LocalTransformer
-from pycram.robot_description import RobotDescription
+from pycram.robot_description import RobotDescription, GraspDescription
 from scipy.spatial.transform import Rotation as R
-from typing_extensions import List
+from typing_extensions import List, Union, Optional
 
 from pycram.ros.viz_marker_publisher import AxisMarkerPublisher
+from pycram.world_concepts.world_object import Object
 
 """Implementation of helper functions and classes for internal usage only.
 
@@ -52,59 +57,107 @@ FACE_TO_AXIS_INDEX = {
 }
 
 
-def calculate_vector_face(vector: List):
+def calculate_vector_face(vector: List, side_axis: Optional[AxisIdentifier] = None) -> List[Grasp]:
     """
-    Determines the face of the object based on the input vector.
+    Determines the faces of the object based on the input vector.
+
+    If `side_axis` is None, it calculates the primary and secondary faces based on the vector's magnitude
+    in the x and y directions, determining which sides of the object are most aligned with the robot.
+    If `side_axis` is provided, it only considers the specified axis and calculates the faces aligned
+    with that axis.
 
     Args:
-        vector (List): A 3D vector representing one of the robot's axes in the object's frame.
+        vector (List): A 3D vector representing one of the robot's axes in the object's frame, with
+                       irrelevant components set to np.nan.
+        side_axis (Optional[AxisIdentifier]): Specifies a specific axis (e.g., X, Y, Z) to focus on.
 
     Returns:
-        str: The corresponding face of the object.
+        List[Grasp]: A list of two Grasp enums representing the primary and secondary faces.
     """
-    max_index = np.argmax(np.abs(vector))
-    max_sign = int(np.sign(vector[max_index]))
-    axis = INDEX_TO_AXIS[max_index]
+    epsilon = 1e-15
 
-    return AXIS_INDEX_TO_FACE[(axis, max_sign)]
+    vector = np.where(np.isnan(vector), np.nan, vector + epsilon)
+
+    if side_axis is None:
+        valid_indices = [AXIS_TO_INDEX['x'], AXIS_TO_INDEX['y'], AXIS_TO_INDEX['z']]
+    else:
+        valid_indices = [AXIS_TO_INDEX[side_axis.name.lower()]]
+
+    valid_indices = [i for i in valid_indices if not np.isnan(vector[i])]
+
+    abs_vector = np.abs(vector)
+    sorted_indices = sorted(valid_indices, key=lambda i: abs_vector[i], reverse=True)
+
+    primary_index = sorted_indices[0]
+    primary_sign = int(np.sign(vector[primary_index]))
+    primary_axis = INDEX_TO_AXIS[primary_index]
+    primary_face = AXIS_INDEX_TO_FACE[(primary_axis, primary_sign)]
+
+    if len(sorted_indices) > 1:
+        secondary_index = sorted_indices[1]
+        secondary_sign = int(np.sign(vector[secondary_index]))
+        secondary_axis = INDEX_TO_AXIS[secondary_index]
+        secondary_face = AXIS_INDEX_TO_FACE[(secondary_axis, secondary_sign)]
+    else:
+        secondary_sign = -primary_sign
+        secondary_axis = primary_axis
+        secondary_face = AXIS_INDEX_TO_FACE[(secondary_axis, secondary_sign)]
+
+    return [primary_face, secondary_face]
 
 
-def calculate_object_faces(object):
+def calculate_grasp_configs(target_object: ObjectDesignatorDescription.Object, robot: Optional[Object] = None) -> List[GraspDescription]:
     """
-    Calculates the faces of an object relative to the robot based on orientation.
+    Calculates the grasp configurations of an object relative to the robot based on orientation and position.
 
-    This method determines the face of the object that is directed towards the robot,
-    as well as the bottom face, by calculating vectors aligned with the robot's negative x-axis
-    and negative z-axis in the object's frame.
+    This method determines the possible grasp configurations (side and top/bottom faces) of the object,
+    taking into account the object's orientation, position, and whether horizontal alignment is preferred.
 
     Args:
-        object (Object): The object whose faces are to be calculated, with an accessible pose attribute.
+        target_object (ObjectDesignatorDescription.Object): The object whose grasp configurations are to be calculated.
+        robot (Optional[Object]): The robot for which the grasp configurations are being calculated.
 
     Returns:
-        list: A list containing two Grasp Enums, where the first element is the face of the object facing the robot,
-              and the second element is the top or bottom face of the object.
+        List[GraspConfig]: A sorted list of GraspConfig instances representing all grasp permutations.
     """
-    local_transformer = LocalTransformer()
-    oTm = object.pose
 
+    obj_desig = target_object if isinstance(target_object, (ObjectDesignatorDescription.Object, Pose)) else target_object.resolve()
+
+    oTm = obj_desig.pose
     base_link = RobotDescription.current_robot_description.base_link
-    marker = AxisMarkerPublisher()
-    base_link_pose = object.world_object.world.robot.get_link_pose(base_link)
+    if robot is None:
+        base_link_pose = obj_desig.world_object.world.robot.get_link_pose(base_link)
+    else:
+        base_link_pose = robot.get_link_pose(base_link)
 
-    marker.publish([base_link_pose])
+    side_axis, horizontal, top = get_preferred_grasp_alignment(target_object)
 
-    oTb = local_transformer.transform_pose(oTm, object.world_object.world.robot.get_link_tf_frame(base_link))
-    orientation = oTb.orientation_as_list()
+    object_position = [oTm.position.x, oTm.position.y, oTm.position.z]
+    robot_position = base_link_pose.position_as_list()
+    vector_to_robot_world = [robot_position[i] - object_position[i] for i in range(3)]
 
-    rotation_matrix = R.from_quat([orientation[0], orientation[1], orientation[2], orientation[3]]).inv().as_matrix()
+    orientation = [oTm.orientation.x, oTm.orientation.y, oTm.orientation.z, oTm.orientation.w]
+    rotation_matrix = R.from_quat(orientation).as_matrix()
+    o_R_w = rotation_matrix.T
 
-    robot_negative_x_vector = -rotation_matrix[:, 0]
-    robot_negative_z_vector = -rotation_matrix[:, 2]
+    vector_to_robot_local = o_R_w.dot(vector_to_robot_world)
 
-    facing_robot_face = calculate_vector_face(robot_negative_x_vector)
-    bottom_face = calculate_vector_face(robot_negative_z_vector)
+    vector_x, vector_y, vector_z = vector_to_robot_local
 
-    return [facing_robot_face, bottom_face]
+    vector_facing = np.array([vector_x, vector_y, np.nan], dtype=float)
+    side_faces = calculate_vector_face(vector_facing, side_axis)
+
+    vector_z = np.array([np.nan, np.nan, vector_z], dtype=float)
+    top_faces = calculate_vector_face(vector_z) if top else [None]
+
+    grasp_configs = [
+        GraspDescription(side_face=side, top_face=top_face, horizontal=horizontal)
+        for top_face in top_faces
+        for side in side_faces
+    ]
+
+    return grasp_configs
+
 
 
 def calculate_grasp_offset(object_dim: List, arm, grasp):
@@ -127,37 +180,93 @@ def calculate_grasp_offset(object_dim: List, arm, grasp):
 
     object_half_dimension = object_dim[AXIS_TO_INDEX[axis]] / 2
 
-    tool_frame_offset = RobotDescription.current_robot_description.get_distance_palm_to_tool_frame(arm)/2
+    tool_frame_offset = RobotDescription.current_robot_description.get_distance_palm_to_tool_frame(arm) / 2
 
-    offset_value = max(0, object_half_dimension-tool_frame_offset)
+    offset_value = max(0, object_half_dimension - tool_frame_offset)
 
     return offset_value
 
 
-def adjust_grasp_for_object_rotation(object, grasp, arm):
+def calculate_rim_grasp(object_dim: List, grasp):
     """
-    Adjusts the grasp orientation based on the object's current orientation.
+    Calculates the grasp offset of an object based on its dimensions and the desired grasp type.
 
-    This function combines the specified grasp orientation with the object's current orientation
-    to produce the final orientation needed for the end effector to grasp the object correctly.
+    This method adjusts the object's position along the specified axis to account for grasping
+    constraints, based on the arm's tool frame offset and the object's half-dimensions.
 
     Args:
-        object (Object): The object to be grasped, with an orientation accessible as a quaternion list.
-        grasp (Enum): The specified grasp type, used to retrieve the predefined grasp orientation.
-        arm (Enum): The arm used for grasping, needed to access the end effector's grasp orientations.
+        object_dim (List[float]): Dimensions of the object in each axis [x, y, z].
+        grasp (Enum): The desired grasp type, which determines the grasp axis and direction.
 
     Returns:
-        list: A quaternion [x, y, z, w] representing the adjusted grasp orientation.
-
-    # TODO: currently redundant, can also call pycram.datastructures.pose.Pose.multiply_quaternions with some preperation
+        offset: Translation offset of the object for grasping.
     """
-    grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(arm).end_effector.grasps[grasp]
-    x1, y1, z1, w1 = grasp_orientation
-    x2, y2, z2, w2 = object.orientation_as_list()
+    axis, _ = FACE_TO_AXIS_INDEX[grasp]
 
-    w = w2 * w1 - x2 * x1 - y2 * y1 - z2 * z1
-    x = w2 * x1 + x2 * w1 + y2 * z1 - z2 * y1
-    y = w2 * y1 - x2 * z1 + y2 * w1 + z2 * x1
-    z = w2 * z1 + x2 * y1 - y2 * x1 + z2 * w1
+    object_half_dimension = object_dim[AXIS_TO_INDEX[axis]] / 2
 
-    return [x, y, z, w]
+    return object_half_dimension
+
+
+def adjust_grasp_for_object_rotation(object_pose: Pose, grasp_quaternion: List[float]) -> Pose:
+    """
+    Adjusts the grasp orientation based on the object's rotation.
+
+    Args:
+        object_pose (Pose): The object's pose, including position and orientation.
+        grasp_quaternion (List[float]): The grasp quaternion to be adjusted.
+    Returns:
+        Pose: The adjusted grasp orientation.
+    """
+    obj_pose = Pose(object_pose.position_as_list(), grasp_quaternion)
+    obj_pose.multiply_quaternions(object_pose.orientation_as_list())
+    return obj_pose
+
+
+def get_preferred_grasp_alignment(object: Object) -> (bool, bool):
+    """
+    Determines the preferred grasp alignment for an object.
+    Args:
+        object (Object): The object to be grasped.
+    Returns:
+        tuple: A tuple of two booleans, indicating whether the object should be grasped horizontally and/or from the top
+    """
+    object_type = object.obj_type if isinstance(object, ObjectDesignatorDescription.Object) else ObjectType.GENERIC_OBJECT
+    preferred_alignment_dict = {ObjectType.BOWL: (None, True, True),
+                                ObjectType.SPOON: (AxisIdentifier.X, False, True),
+                                ObjectType.BREAKFAST_CEREAL: (AxisIdentifier.X, False, False),}
+
+    sidegrasp_axis, grasp_horizontal, grasp_top = preferred_alignment_dict.get(object_type, (None, False, False))
+
+    return sidegrasp_axis, grasp_horizontal, grasp_top
+
+
+def translate_relative_to_object(obj_pose, palm_axis, translation_value) -> Pose:
+    """
+    Applies the translation directly along the palm axis returned by get_palm_axis().
+
+    Args:
+        oTg: The current pose of the object relative to the gripper.
+        palm_axis: A list [x, y, z] where one value is 1 or -1, and the others are 0.
+        translation_value: The magnitude of the retreat in meters.
+        gripper_pose: The current pose of the gripper.
+
+    Returns:
+        None: Modifies the oTg.pose in place.
+    """
+    object_pose = obj_pose.copy()
+    local_retraction = np.array([palm_axis[0] * translation_value,
+                                 palm_axis[1] * translation_value,
+                                 palm_axis[2] * translation_value])
+
+    quat = object_pose.orientation_as_list()
+
+    rotation_matrix = R.from_quat(quat).as_matrix()
+
+    retraction_world = rotation_matrix @ local_retraction
+
+    object_pose.pose.position.x -= retraction_world[0]
+    object_pose.pose.position.y -= retraction_world[1]
+    object_pose.pose.position.z -= retraction_world[2]
+
+    return object_pose
