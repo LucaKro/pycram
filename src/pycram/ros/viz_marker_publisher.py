@@ -21,7 +21,7 @@ class VizMarkerPublisher:
     Publishes an Array of visualization marker which represent the situation in the World
     """
 
-    def __init__(self, topic_name="/pycram/viz_marker", interval=0.1):
+    def __init__(self, topic_name="/pycram/viz_marker", interval=0.1, as_prospection_world=False):
         """
         The Publisher creates an Array of Visualization marker with a Marker for each link of each Object in the
         World. This Array is published with a rate of interval.
@@ -29,7 +29,11 @@ class VizMarkerPublisher:
         :param topic_name: The name of the topic to which the Visualization Marker should be published.
         :param interval: The interval at which the visualization marker should be published, in seconds.
         """
-        self.topic_name = topic_name
+        self.as_prospection_world = as_prospection_world
+        if self.as_prospection_world:
+            self.topic_name = "/pycram/prospection_viz_marker"
+        else:
+            self.topic_name = topic_name
         self.interval = interval
 
         self.pub = rospy.Publisher(self.topic_name, MarkerArray, queue_size=10)
@@ -37,6 +41,8 @@ class VizMarkerPublisher:
         self.thread = threading.Thread(target=self._publish)
         self.kill_event = threading.Event()
         self.main_world = World.current_world if not World.current_world.is_prospection_world else World.current_world.world_sync.world
+        if self.as_prospection_world:
+            self.main_world = World.current_world.prospection_world
 
         self.thread.start()
         atexit.register(self._stop_publishing)
@@ -104,6 +110,8 @@ class VizMarkerPublisher:
                 else:
                     color = [1, 1, 1, 1] if obj.link_name_to_id[link] == -1 else obj.get_link_color(link).get_rgba()
 
+                if self.as_prospection_world:
+                    color = [color[0], color[1], color[2], 0.5]
                 msg.color = ColorRGBA(*color)
                 msg.lifetime = rospy.Duration(1)
 
