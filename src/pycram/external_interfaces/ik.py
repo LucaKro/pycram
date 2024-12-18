@@ -10,7 +10,6 @@ from sensor_msgs.msg import JointState
 
 from ..datastructures.world import World, UseProspectionWorld
 from ..world_concepts.world_object import Object
-from ..utils import _apply_ik
 from ..local_transformer import LocalTransformer
 from ..datastructures.pose import Pose
 from ..robot_description import RobotDescription, KinematicChainDescription
@@ -69,7 +68,7 @@ def call_ik(root_link: str, tip_link: str, target_pose: Pose, robot_object: Obje
    :param joints: A list of joint name that should be altered
    :return: The solution that was generated as a list of joint values corresponding to the order of joints given
    """
-    if RobotDescription.current_robot_description.name == "pr2":
+    if RobotDescription.current_robot_description.name == "pr2" and not root_link == "base_link":
         ik_service = "/pr2_right_arm_kinematics/get_ik" if "r_wrist" in tip_link else "/pr2_left_arm_kinematics/get_ik"
     else:
         ik_service = "/kdl_ik_service/get_ik"
@@ -243,3 +242,15 @@ def request_giskard_ik(target_pose: Pose, robot: Object, gripper: str) -> Tuple[
             raise IKError(target_pose, "map", gripper)
         return pose, robot_joint_states
 
+
+def _apply_ik(robot: 'pycram.world_concepts.WorldObject', pose_and_joint_poses: Tuple[Pose, Dict[str, float]]) -> None:
+    """
+    Apllies a list of joint poses calculated by an inverse kinematics solver to a robot
+
+    :param robot: The robot the joint poses should be applied on
+    :param pose_and_joint_poses: The base pose and joint states as returned by the ik solver
+    :return: None
+    """
+    pose, joint_states = pose_and_joint_poses
+    robot.set_pose(pose)
+    robot.set_joint_positions(joint_states)
