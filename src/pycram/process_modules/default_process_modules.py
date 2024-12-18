@@ -4,10 +4,9 @@ from typing_extensions import Any
 from scipy.spatial.transform import Rotation as R
 
 from ..datastructures.enums import JointType, Grasp
-from ..external_interfaces.ik import request_ik
+from ..external_interfaces.ik import request_ik, _apply_ik
 from ..external_interfaces.robokudo import query_object
 from ..helper import adjust_grasp_for_object_rotation
-from ..utils import _apply_ik
 from ..process_module import ProcessModule
 from ..external_interfaces import giskard
 from ..robot_description import RobotDescription
@@ -58,7 +57,7 @@ class DefaultMoveHead(ProcessModule):
         new_tilt = -np.arctan2(rotation_tilt_offset[2],
                                np.sqrt(rotation_tilt_offset[0] ** 2 + rotation_tilt_offset[1] ** 2))
 
-        # @TODO: find a better way to handle this
+        # @TODO: find a better way to handle this (front facing axis of camera maybe?)
         if RobotDescription.current_robot_description.name in {"iCub", "tiago_dual"}:
             new_tilt = -new_tilt
 
@@ -173,27 +172,31 @@ class DefaultOpen(ProcessModule):
         # TODO: Should probably be a motion, but DefaultOpenReal does not do any of these calculations, so maybe its fine? Need to think about this
         part_of_object = desig.object_part.world_object
 
-        if desig.object_part.name == "handle_cab3_door_top":
+        if desig.object_part.name in ["handle_cab1_top_door", "handle_cab2_door", "handle_cab3_door_top", "handle_cab3_door_bottom", "handle_cab4_door_bottom", "handle_cab7"]:
             container_joint = part_of_object.find_joint_above_link(desig.object_part.name, JointType.REVOLUTE)
         else:
             container_joint = part_of_object.find_joint_above_link(desig.object_part.name, JointType.PRISMATIC)
 
-        goal_pose = link_pose_for_joint_config(part_of_object, {
-            container_joint: part_of_object.get_joint_limits(container_joint)[1] - 0.05}, desig.object_part.name)
+        if desig.object_part.name == "handle_cab7":
+            joint_safety_offset = 0.6
+        else:
+            joint_safety_offset = 0.05
 
-        grasp = Grasp.FRONT
-        adjusted_grasp = adjust_grasp_for_object_rotation(goal_pose, grasp, desig.arm)
-        goal_pose = goal_pose.copy()
-        goal_pose.set_orientation(adjusted_grasp)
+        goal_pose = link_pose_for_joint_config(part_of_object, {
+            container_joint: part_of_object.get_joint_limits(container_joint)[1] - joint_safety_offset}, desig.object_part.name)
+
+        side_grasp, top_grasp, horizontal = (Grasp.FRONT, None, False)
+        grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(desig.arm).end_effector.get_grasp(side_grasp, top_grasp, horizontal)
+        goal_pose = adjust_grasp_for_object_rotation(goal_pose, grasp_orientation)
 
         if desig.goal_location:
             _navigate_to_pose(desig.goal_location.pose, World.robot)
-        else:
-            _move_arm_tcp(goal_pose, World.robot, desig.arm)
+
+        _move_arm_tcp(goal_pose, World.robot, desig.arm)
 
         desig.object_part.world_object.set_joint_position(container_joint,
                                                           part_of_object.get_joint_limits(
-                                                              container_joint)[1])
+                                                              container_joint)[1] - joint_safety_offset)
 
 
 class DefaultClose(ProcessModule):
@@ -205,7 +208,7 @@ class DefaultClose(ProcessModule):
     def _execute(self, desig: ClosingMotion):
         part_of_object = desig.object_part.world_object
 
-        if desig.object_part.name == "handle_cab3_door_top":
+        if desig.object_part.name in ["handle_cab1_top_door", "handle_cab2_door", "handle_cab3_door_top", "handle_cab3_door_bottom", "handle_cab4_door_bottom", "handle_cab7"]:
             container_joint = part_of_object.find_joint_above_link(desig.object_part.name, JointType.REVOLUTE)
         else:
             container_joint = part_of_object.find_joint_above_link(desig.object_part.name, JointType.PRISMATIC)
@@ -213,15 +216,14 @@ class DefaultClose(ProcessModule):
         goal_pose = link_pose_for_joint_config(part_of_object, {
             container_joint: part_of_object.get_joint_limits(container_joint)[0]}, desig.object_part.name)
 
-        grasp = Grasp.FRONT
-        adjusted_grasp = adjust_grasp_for_object_rotation(goal_pose, grasp, desig.arm)
-        goal_pose = goal_pose.copy()
-        goal_pose.set_orientation(adjusted_grasp)
+        side_grasp, top_grasp, horizontal = (Grasp.FRONT, None, False)
+        grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(desig.arm).end_effector.get_grasp(
+            side_grasp, top_grasp, horizontal)
+        goal_pose = adjust_grasp_for_object_rotation(goal_pose, grasp_orientation)
 
         if desig.goal_location:
             _navigate_to_pose(desig.goal_location.pose, World.robot)
-        else:
-            _move_arm_tcp(goal_pose, World.robot, desig.arm)
+        _move_arm_tcp(goal_pose, World.robot, desig.arm)
 
         desig.object_part.world_object.set_joint_position(container_joint,
                                                           part_of_object.get_joint_limits(
@@ -286,7 +288,7 @@ class DefaultMoveHeadReal(ProcessModule):
         new_tilt = -np.arctan2(rotation_tilt_offset[2],
                                np.sqrt(rotation_tilt_offset[0] ** 2 + rotation_tilt_offset[1] ** 2))
 
-        # @TODO: find a better way to handle this
+        # @TODO: find a better way to handle this (front facing axis of camera maybe?)
         if RobotDescription.current_robot_description.name in {"iCub", "tiago_dual"}:
             new_tilt = -new_tilt
 

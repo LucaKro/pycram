@@ -1,10 +1,9 @@
 from threading import Lock
 import numpy as np
 from .. import world_reasoning as btr
-from ..utils import _apply_ik
 from ..designators.motion_designator import *
 from ..datastructures.enums import JointType
-from ..external_interfaces.ik import request_ik
+from ..external_interfaces.ik import request_ik, _apply_ik
 
 from ..datastructures.world import World
 from ..local_transformer import LocalTransformer

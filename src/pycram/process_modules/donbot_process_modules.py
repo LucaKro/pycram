@@ -1,5 +1,5 @@
 from .default_process_modules import *
-from ..utils import _apply_ik
+from ..external_interfaces.ik import _apply_ik
 from .default_process_modules import _move_arm_tcp
 
 
