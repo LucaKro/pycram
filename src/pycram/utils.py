@@ -9,18 +9,13 @@ GeneratorList -- implementation of generator list wrappers.
 import sys
 from inspect import isgeneratorfunction
 
-import numpy as np
 from typing_extensions import List, Tuple, Callable
 
 import os
 
 from urdf_parser_py.urdf import URDF
 
-from .datastructures.pose import Pose
 import math
-
-from typing_extensions import Dict
-from scipy.spatial.transform import Rotation as R
 
 
 class bcolors:
@@ -40,19 +35,6 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-
-
-def _apply_ik(robot: 'pycram.world_concepts.WorldObject', pose_and_joint_poses: Tuple[Pose, Dict[str, float]]) -> None:
-    """
-    Apllies a list of joint poses calculated by an inverse kinematics solver to a robot
-
-    :param robot: The robot the joint poses should be applied on
-    :param pose_and_joint_poses: The base pose and joint states as returned by the ik solver
-    :return: None
-    """
-    pose, joint_states = pose_and_joint_poses
-    robot.set_pose(pose)
-    robot.set_joint_positions(joint_states)
 
 
 class GeneratorList:
@@ -120,37 +102,6 @@ def axis_angle_to_quaternion(axis: List, angle: float) -> Tuple:
     w = math.cos(angle / 2)
 
     return (x, y, z, w)
-
-
-def translate_relative_to_object(obj_pose, palm_axis, translation_value) -> Pose:
-    """
-    Applies the translation directly along the palm axis returned by get_palm_axis().
-
-    Args:
-        oTg: The current pose of the object relative to the gripper.
-        palm_axis: A list [x, y, z] where one value is 1 or -1, and the others are 0.
-        translation_value: The magnitude of the retreat in meters.
-        gripper_pose: The current pose of the gripper.
-
-    Returns:
-        None: Modifies the oTg.pose in place.
-    """
-    object_pose = obj_pose.copy()
-    local_retraction = np.array([palm_axis[0] * translation_value,
-                                 palm_axis[1] * translation_value,
-                                 palm_axis[2] * translation_value])
-
-    quat = object_pose.orientation_as_list()
-
-    rotation_matrix = R.from_quat(quat).as_matrix()
-
-    retraction_world = rotation_matrix @ local_retraction
-
-    object_pose.pose.position.x -= retraction_world[0]
-    object_pose.pose.position.y -= retraction_world[1]
-    object_pose.pose.position.z -= retraction_world[2]
-
-    return object_pose
 
 
 def on_error_do_nothing(message):

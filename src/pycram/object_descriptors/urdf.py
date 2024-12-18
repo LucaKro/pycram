@@ -175,8 +175,8 @@ class ObjectDescription(AbstractObjectDescription):
     def load_description(self, path) -> URDF:
         with open(path, 'r') as file:
             # Since parsing URDF causes a lot of warning messages which can't be deactivated, we suppress them
-            with suppress_stdout_stderr():
-                return load_urdf_silently(file.read(), from_string_instead_of_file=True)
+            # with suppress_stdout_stderr():
+            return load_urdf_silently(file.read(), from_string_instead_of_file=True)
 
     def generate_from_mesh_file(self, path: str, name: str, color: Optional[Color] = Color()) -> str:
         """
