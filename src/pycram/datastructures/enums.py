@@ -102,6 +102,14 @@ class WorldMode(Enum):
     DIRECT = "DIRECT"
 
 
+class AccessingMode(Enum):
+    """
+    Enum for the different modes of accessing containers.
+    """
+    OPENING = auto()
+    CLOSING = auto()
+
+
 class AxisIdentifier(Enum):
     """
     Enum for translating the axis name to a vector along that axis.
