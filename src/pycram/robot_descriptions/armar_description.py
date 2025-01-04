@@ -135,15 +135,17 @@ armar_description.set_neck("neck_1_yaw", "neck_2_pitch")
 
 
 ################################# Grasps ##################################
-orientation = [0.707, 0.707, 0.707, 0.707]
-right_gripper.generate_all_grasp_orientations(orientation)
-left_gripper.generate_all_grasp_orientations(orientation)
+left_orientation = [0.707, 0.707, 0.707, 0.707]
+left_gripper.generate_grasp_descriptions(left_orientation)
+left_gripper.set_palm_axis([0.0, 0.0, 1.0])
+right_orientation = [-0.5, 0.5, -0.5, 0.5]
+right_gripper.generate_grasp_descriptions(right_orientation)
+right_gripper.set_palm_axis([0.0, 0.0, 1.0])
 
 
 ################################# Additionals ##################################
 armar_description.set_costmap_offset(0)
 armar_description.set_max_reach("torso", "left_tool_frame")
-armar_description.set_palm_axis([0, 0, 1])
 
 # Add to RobotDescriptionManager
 rdm = RobotDescriptionManager()

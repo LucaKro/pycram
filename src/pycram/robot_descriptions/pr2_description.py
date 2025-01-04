@@ -81,12 +81,13 @@ pr2_description.set_neck("head_pan_joint", "head_tilt_joint")
 
 ################################# Grasps ##################################
 orientation = [0, 0, 0, 1]
-right_gripper.generate_all_grasp_orientations(orientation)
-left_gripper.generate_all_grasp_orientations(orientation)
+right_gripper.generate_grasp_descriptions(orientation)
+right_gripper.set_palm_axis([1.0, 0.0, 0])
+left_gripper.generate_grasp_descriptions(orientation)
+left_gripper.set_palm_axis([1.0, 0.0, 0])
 
 ################################## Additionals ##################################
 pr2_description.set_max_reach("torso_lift_link", "l_gripper_tool_frame")
-pr2_description.set_palm_axis([1, 0, 0])
 pr2_description.set_costmap_offset(0)
 
 

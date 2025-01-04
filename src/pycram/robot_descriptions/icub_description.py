@@ -164,11 +164,15 @@ icub_description.add_kinematic_chain("neck", "chest", "head")
 icub_description.set_neck("neck_yaw", "neck_pitch", "neck_roll")
 
 ################################# Grasps ##################################
-orientation = [0.5, 0.5, 0.5, 0.5]
-right_gripper.generate_all_grasp_orientations(orientation)
-left_gripper.generate_all_grasp_orientations(orientation)
+left_orientation = [0.5, 0.5, 0.5, 0.5]
+left_gripper.generate_grasp_descriptions(left_orientation)
+
+right_orientation = [0, 0, -0.707, 0.707]
+right_gripper.generate_grasp_descriptions(right_orientation)
+right_gripper.set_palm_axis([0, 1, 0])
 
 icub_description.set_max_reach(factor=0.8)
+# the grasps either have something to do with palm axis or  or should be able to be inferred if i say that its left or right arm. probbaly the latter actually
 
 # Add to RobotDescriptionManager
 rdm = RobotDescriptionManager()

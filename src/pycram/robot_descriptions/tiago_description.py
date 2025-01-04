@@ -89,12 +89,13 @@ tiago_description.set_neck("head_1_joint", "head_2_joint")
 
 ################################# Grasps ##################################
 front_grasp = [-0.5, 0.5, 0.5, -0.5]
-right_gripper.generate_all_grasp_orientations(front_grasp)
-left_gripper.generate_all_grasp_orientations(front_grasp)
+right_gripper.generate_grasp_descriptions(front_grasp)
+right_gripper.set_palm_axis([0.0, 0.0, -1.0])
+left_gripper.generate_grasp_descriptions(front_grasp)
+left_gripper.set_palm_axis([0.0, 0.0, -1.0])
 
 ################################# Additionals ##################################
 tiago_description.set_costmap_offset(0)
-tiago_description.set_palm_axis([0, 0, -1])
 tiago_description.set_max_reach("torso_lift_link", "gripper_left_tool_link")
 
 # Add to RobotDescriptionManager
