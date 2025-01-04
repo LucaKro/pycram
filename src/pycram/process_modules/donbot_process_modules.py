@@ -10,7 +10,7 @@ class DonbotMoveHead(DefaultMoveHead):
     robot's base and camera alignment.
     """
     def _execute(self, desig):
-        target = desig.target
+        target = desig.target.copy()
         robot = World.robot
 
         base_frame_pose: Pose = robot.get_link_pose("ur5_base_link").copy()
@@ -18,20 +18,22 @@ class DonbotMoveHead(DefaultMoveHead):
         base_position = np.array(base_frame_pose.position_as_list())
 
         target_position = np.array(target.position_as_list())
+        direction_vector = target_position - base_position
+        direction_vector /= np.linalg.norm(direction_vector)
 
-        look_vector = target_position - base_position
-        z_axis = look_vector / np.linalg.norm(look_vector)
+        current_x = np.array([1, 0, 0])
+        rotation_axis = np.cross(current_x, direction_vector)
+        rotation_axis /= np.linalg.norm(rotation_axis)
+        rotation_angle = np.arccos(np.clip(np.dot(current_x, direction_vector), -1.0, 1.0))
 
-        up = -np.array(RobotDescription.current_robot_description.cameras["camera_link"].front_facing_axis)
+        orientation_quat = R.from_rotvec(rotation_axis * rotation_angle).as_quat()
 
-        x_axis = np.cross(up, z_axis)
-        x_axis /= np.linalg.norm(x_axis)
-
-        y_axis = np.cross(z_axis, x_axis)
-        rotation_matrix = np.array([x_axis, y_axis, z_axis]).T
-
-        orientation_quat = R.from_matrix(rotation_matrix).as_quat()
         adjusted_pose = Pose(base_position.tolist(), orientation_quat.tolist())
+        side_grasp, top_grasp, horizontal = (Grasp.FRONT, None, False)
+        grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(Arms.LEFT).end_effector.get_grasp(
+            side_grasp, top_grasp, horizontal)
+        adjusted_pose = adjust_grasp_for_object_rotation(adjusted_pose, grasp_orientation)
+
         _move_arm_tcp(adjusted_pose, robot, Arms.LEFT)
 
 # TODO: Also need to do DonbotMoveHeadReal
