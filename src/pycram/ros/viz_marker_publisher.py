@@ -14,7 +14,7 @@ from ..datastructures.enums import AxisIdentifier, ObjectType
 from ..datastructures.pose import Pose, Transform
 from ..designator import ObjectDesignatorDescription
 from ..datastructures.world import World
-
+from scipy.spatial.transform import Rotation as R
 
 class VizMarkerPublisher:
     """
@@ -68,8 +68,12 @@ class VizMarkerPublisher:
         obj_coloring = False
         marker_array = MarkerArray()
         for obj in self.main_world.objects:
-            if obj.obj_type == ObjectType.ROBOT or obj.name == "floor" and not obj.name == "rollin_justin":
-                continue
+            if obj.obj_type == ObjectType.ROBOT or obj.name == "floor":  # and not obj.name == "rollin_justin":
+                if obj.obj_type == ObjectType.ROBOT and self.as_prospection_world:
+                    pass
+                else:
+                    continue
+                # continue
             if obj.obj_type == ObjectType.GENERIC_OBJECT:
                 obj_coloring = True
             for link in obj.link_name_to_id.keys():
@@ -103,7 +107,7 @@ class VizMarkerPublisher:
                         "kiwi": (0.76, 0.88, 0.52, 1),
                         "avocado": (0.0, 0.5, 0.0, 1),
                         "bowl": (1, 0, 0, 1),
-                        "jeroen_cup":  (0, 0, 1, 1)
+                        "jeroen_cup": (0, 0, 1, 1)
                     }
                     color = colors.get(obj.name, [1, 1, 1, 1])
 
@@ -142,6 +146,107 @@ class VizMarkerPublisher:
         """
         self.kill_event.set()
         self.thread.join()
+
+
+class ArrowArrayPublisher:
+    """
+    Class to publish multiple poses as markers in a MarkerArray.
+    """
+
+    def __init__(self, topic_name: str = '/pycram/arrow_marker', interval: float = 0.1):
+        """
+        Initializes the publisher to create and publish a MarkerArray of arrows representing poses.
+
+        :param topic_name: Name of the marker topic
+        :param interval: Interval at which the marker array should be published
+        """
+        self.marker_array_pub = rospy.Publisher(topic_name, MarkerArray, queue_size=10)
+        self.marker_array = MarkerArray()
+        self.current_id = 0
+        self.interval = interval
+
+    def publish(self, poses: List[Pose], colors: Optional[List[List[float]]] = None, labels: Optional[List[str]] = None,
+                label_poses: Optional[List[Pose]] = None):
+        """
+        Publishes a list of poses as arrow markers in the MarkerArray.
+
+        :param poses: List of poses to publish
+        :param colors: List of colors for each marker in RGBA format. If not provided, default color is used.
+        :param labels: List of labels indicating the order or other information for each pose.
+        """
+        if colors is None:
+            colors = [[1.0, 0.0, 0.0, 1.0] for _ in poses]  # Default to red arrows
+
+        self.marker_array.markers.clear()
+        for idx, pose in enumerate(poses):
+            color = colors[idx] if idx < len(colors) else [1.0, 0.0, 0.0, 1.0]
+            label = labels[idx] if labels and idx < len(labels) else None
+            label_pose = label_poses[idx] if label_poses and idx < len(label_poses) else None
+            self._add_marker(pose, color, label, label_pose)
+
+        self.marker_array_pub.publish(self.marker_array)
+
+    def _add_marker(self, pose: Pose, color: List[float], label: Optional[str] = None,
+                    label_pose: Optional[Pose] = None):
+        """
+        Adds a single pose as an arrow marker to the MarkerArray.
+
+        :param pose: Pose of the marker
+        :param color: Color of the marker in RGBA format
+        :param label: Label for the marker (e.g., order or additional info)
+        """
+        # Add arrow marker
+        arrow_marker = Marker()
+        arrow_marker.id = self.current_id
+        arrow_marker.header.frame_id = "pycram/map"
+        arrow_marker.header.stamp = rospy.Time.now()
+        arrow_marker.ns = "arrow_marker"
+        arrow_marker.type = Marker.ARROW
+        arrow_marker.action = Marker.ADD
+        arrow_marker.pose = pose.pose
+        arrow_marker.scale.x = 0.075  # Length of the arrow shaft
+        arrow_marker.scale.y = 0.02  # Width of the arrow shaft
+        arrow_marker.scale.z = 0.015  # Width of the arrow head
+        arrow_marker.color.r = color[0]
+        arrow_marker.color.g = color[1]
+        arrow_marker.color.b = color[2]
+        arrow_marker.color.a = color[3]
+
+        self.marker_array.markers.append(arrow_marker)
+        self.current_id += 1
+
+        if label:
+            text_marker = Marker()
+            text_marker.id = self.current_id
+            text_marker.header.frame_id = "pycram/map"
+            text_marker.header.stamp = rospy.Time.now()
+            text_marker.ns = "label_marker"
+            text_marker.type = Marker.TEXT_VIEW_FACING
+            text_marker.action = Marker.ADD
+
+            if not label_pose:
+                text_marker.pose = pose.copy()
+                text_marker.pose.position.z += 0.1
+            else:
+                text_marker.pose = label_pose.pose
+
+            text_marker.scale.z = 0.05
+            text_marker.color.r = 1.0
+            text_marker.color.g = 1.0
+            text_marker.color.b = 1.0
+            text_marker.color.a = 1.0
+            text_marker.text = label
+
+            self.marker_array.markers.append(text_marker)
+            self.current_id += 1
+
+    def clear_all_markers(self):
+        """
+        Clears all markers in the MarkerArray.
+        """
+        self.marker_array.markers.clear()
+        self.marker_array_pub.publish(self.marker_array)
+        self.current_id = 0
 
 
 class ManualMarkerPublisher:
@@ -224,7 +329,7 @@ class ManualMarkerPublisher:
 
         color_rgba = ColorRGBA(*color)
         self._make_marker_array(name=name, marker_type=Marker.ARROW, marker_pose=pose,
-                                marker_scales=(0.05, 0.05, 0.05), color_rgba=color_rgba)
+                                marker_scales=(0.05, 0.015, 0.01), color_rgba=color_rgba)
         self.marker_array_pub.publish(self.marker_array)
         self.log_message = f"Pose '{name}' published"
 
@@ -271,7 +376,7 @@ class ManualMarkerPublisher:
         frame_id = marker_pose.header.frame_id
         new_marker = Marker()
         new_marker.id = self.current_id
-        new_marker.header.frame_id = frame_id
+        new_marker.header.frame_id = "pycram/map"
         new_marker.ns = name
         new_marker.header.stamp = rospy.Time.now()
         new_marker.type = marker_type
@@ -350,8 +455,292 @@ class ManualMarkerPublisher:
 
         self.marker_overview = {}
         self.marker_array_pub.publish(self.marker_array)
-
         # rospy.loginfo('Removed all markers')
+
+
+class CurvedArrowMarkerPublisher:
+    """
+    Class to publish curved arrow markers in a MarkerArray for visualizing rotations in RViz.
+    """
+
+    def __init__(self, topic='/pycram/rotation_marker', frame_id='pycram/map'):
+        """
+        Initializes the publisher for creating curved arrow markers.
+
+        :param topic: Name of the marker topic
+        :param frame_id: Frame ID for the markers
+        """
+        self.marker_pub = rospy.Publisher(topic, MarkerArray, queue_size=10)
+        self.marker_array = MarkerArray()
+        self.marker_overview = {}
+        self.current_id = 0
+        self.frame_id = frame_id
+
+        self.center_pose = None
+        self.goal_quaternion = None
+        self.radius = None
+        self.color = None
+
+        self.thread = threading.Thread(target=self._publish)
+
+    def publish(self, center_pose: Pose, goal_quaternion: List[float], radius=0.1, color=[1, 0, 1, 1]):
+        """
+        Publishes a curved arrow marker representing a rotation from the center pose's quaternion to the goal quaternion.
+
+        :param center_pose: The pose at the center of the rotation.
+        :param goal_quaternion: The quaternion representing the goal rotation.
+        :param radius: The radius of the curved arrow (default is 10cm).
+        :param color: The color of the marker in RGBA format (default is magenta).
+        """
+        self.clear_all_markers()
+        self.center_pose = center_pose
+        self.goal_quaternion = goal_quaternion
+        self.radius = radius
+        self.color = color
+
+        self._create_curve()
+
+        if self.thread.is_alive():
+            self.thread.join()
+
+        self.thread = threading.Thread(target=self._publish)
+        self.thread.start()
+        self.thread.join()
+
+    def _publish(self):
+        """
+        Continuously publishes the MarkerArray at intervals.
+        """
+        stop_thread = False
+        start_time = time.time()
+        duration = 1.0  # Publish duration in seconds
+        frequency = 0.2  # Publish frequency in seconds
+
+        while not stop_thread:
+            if time.time() - start_time > duration:
+                stop_thread = True
+
+            self.marker_pub.publish(self.marker_array)
+            rospy.sleep(frequency)
+
+    def _create_curve(self):
+        """
+        Creates the curved arrow markers and appends them to the MarkerArray.
+        """
+        self.marker_array.markers.clear()
+
+        # Normalize input quaternions
+        start_quaternion = [
+            self.center_pose.pose.orientation.x,
+            self.center_pose.pose.orientation.y,
+            self.center_pose.pose.orientation.z,
+            self.center_pose.pose.orientation.w
+        ]
+        start_quaternion = start_quaternion / np.linalg.norm(start_quaternion)
+        goal_quaternion = self.goal_quaternion / np.linalg.norm(self.goal_quaternion)
+
+        start_rotation = R.from_quat(start_quaternion)
+        goal_rotation = R.from_quat(goal_quaternion)
+
+        # Transform the goal quaternion into the local frame of the start quaternion
+        local_goal_rotation = start_rotation.inv() * goal_rotation
+        angle = local_goal_rotation.magnitude()
+        axis = local_goal_rotation.as_rotvec() / angle if angle != 0 else [0, 0, 1]
+
+        # Special case for rotations around the x-axis
+        if np.allclose(axis, [1, 0, 0], atol=1e-3) or np.allclose(axis, [-1, 0, 0], atol=1e-3):
+            curve_marker = self._create_x_axis_rotation_marker(self.center_pose, self.radius, angle, start_rotation, self.color)
+        else:
+            curve_marker = self._create_curve_sphere_list(self.center_pose, self.radius, angle, axis, start_rotation, self.color)
+
+        self.marker_array.markers.append(curve_marker)
+
+        # Add the arrowhead
+        arrowhead_marker = self._create_arrowhead_marker(self.center_pose, self.radius, angle, axis, self.color)
+        self.marker_array.markers.append(arrowhead_marker)
+
+    def _create_x_axis_rotation_marker(self, center_pose: Pose, radius: float, angle: float, start_rotation: R, color: List[float]) -> Marker:
+        """
+        Creates a tight circle around the local x-axis to visualize rotations around it.
+
+        :param center_pose: The pose at the center of the rotation.
+        :param radius: The radius of the circle.
+        :param angle: The angle of the rotation in radians.
+        :param start_rotation: The initial orientation as a rotation object.
+        :param color: The color of the marker in RGBA format.
+
+        :return: A Marker object representing the rotation circle.
+        """
+        marker = Marker()
+        marker.id = self.current_id
+        marker.header.frame_id = self.frame_id
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "curved_arrow"
+        marker.type = Marker.SPHERE_LIST
+        marker.action = Marker.ADD
+        marker.scale.x = 0.01  # Sphere diameter
+        marker.scale.y = 0.01
+        marker.scale.z = 0.01
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.color.a = color[3]
+
+        num_points = 100  # Points for the circle
+        self.last_point = None
+        self.second_last_point = None
+
+        for i in range(num_points + 1):
+            theta = i / num_points * angle  # Partial circle based on rotation angle
+            local_point = np.array([0, radius * np.cos(theta), radius * np.sin(theta)])
+            world_point = start_rotation.apply(local_point)
+
+            sphere_point = Point()
+            sphere_point.x = center_pose.pose.position.x + world_point[0]
+            sphere_point.y = center_pose.pose.position.y + world_point[1]
+            sphere_point.z = center_pose.pose.position.z + world_point[2]
+
+            marker.points.append(sphere_point)
+
+            self.second_last_point = self.last_point
+            self.last_point = sphere_point
+
+        self.current_id += 1
+        return marker
+
+    def _create_curve_sphere_list(self, center_pose: Pose, radius: float, angle: float, axis: List[float], start_rotation: R, color: List[float]) -> Marker:
+        """
+        Creates a 3D curve using a SPHERE_LIST marker.
+
+        :param center_pose: The pose at the center of the rotation.
+        :param radius: The radius of the curved arrow.
+        :param angle: The angle of the rotation in radians.
+        :param axis: The axis of rotation as a normalized vector.
+        :param start_rotation: The initial orientation as a rotation object.
+        :param color: The color of the marker in RGBA format.
+
+        :return: A Marker object representing the curve.
+        """
+        marker = Marker()
+        marker.id = self.current_id
+        marker.header.frame_id = self.frame_id
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "curved_arrow"
+        marker.type = Marker.SPHERE_LIST
+        marker.action = Marker.ADD
+        marker.scale.x = 0.01  # Sphere diameter to look like a thin tube
+        marker.scale.y = 0.01
+        marker.scale.z = 0.01
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.color.a = color[3]
+
+        num_points = 100  # Increase number of spheres for overlap
+        self.last_point = None
+        self.second_last_point = None
+
+        for i in range(num_points + 1):
+            t = i / num_points * angle  # Current angle
+            rotvec = t * axis
+            point = start_rotation.apply(R.from_rotvec(rotvec).apply([-radius, 0, 0]))  # Align with local frame
+
+            # Transform to the center pose's frame
+            sphere_point = Point()
+            sphere_point.x = center_pose.pose.position.x + point[0]
+            sphere_point.y = center_pose.pose.position.y + point[1]
+            sphere_point.z = center_pose.pose.position.z + point[2]
+
+            marker.points.append(sphere_point)
+
+            self.second_last_point = self.last_point
+            self.last_point = sphere_point
+
+        self.current_id += 1
+        return marker
+
+    def _create_arrowhead_marker(self, center_pose: Pose, radius: float, angle: float, axis: List[float], color: List[float]) -> Marker:
+        """
+        Creates an arrowhead marker using ARROW to represent the arrowhead at the end of the curve.
+
+        :param center_pose: The pose at the center of the rotation.
+        :param radius: The radius of the curved arrow.
+        :param angle: The angle of the rotation in radians.
+        :param axis: The axis of rotation as a normalized vector.
+        :param color: The color of the marker in RGBA format.
+
+        :return: A Marker object representing the arrowhead.
+        """
+        marker = Marker()
+        marker.id = self.current_id
+        marker.header.frame_id = self.frame_id
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "curved_arrow"
+        marker.type = Marker.ARROW
+        marker.action = Marker.ADD
+        marker.scale.x = 0.0175  # Shorter arrow length
+        marker.scale.y = 0.01  # Arrow width matching sphere diameter
+        marker.scale.z = 0.01  # Arrow height matching sphere diameter
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.color.a = color[3]
+
+        # Position the arrowhead at the end of the curve
+        if self.last_point and self.second_last_point:
+            tangent_vector = np.array([
+                self.last_point.x - self.second_last_point.x,
+                self.last_point.y - self.second_last_point.y,
+                self.last_point.z - self.second_last_point.z
+            ])
+            tangent_vector /= np.linalg.norm(tangent_vector)  # Normalize
+        else:
+            tangent_vector = [1, 0, 0]  # Fallback tangent vector
+
+        arrow_pose = Pose()
+        arrow_pose.position.x = self.last_point.x
+        arrow_pose.position.y = self.last_point.y
+        arrow_pose.position.z = self.last_point.z
+
+        # Default up vector
+        up_vector = [0, 0, 1]
+
+        # Recalculate up vector if parallel to tangent vector
+        if np.isclose(np.dot(tangent_vector, up_vector), 1.0, atol=1e-6) or np.isclose(np.dot(tangent_vector, up_vector), -1.0, atol=1e-6):
+            up_vector = [0, 1, 0]
+
+        # Create an orthogonal basis
+        corrected_up_vector = np.cross(up_vector, tangent_vector)
+        corrected_up_vector /= np.linalg.norm(corrected_up_vector)
+        orthogonal_vector = np.cross(tangent_vector, corrected_up_vector)
+
+        # Construct the rotation matrix
+        rotation_matrix = np.column_stack((tangent_vector, corrected_up_vector, orthogonal_vector))
+        arrow_orientation = R.from_matrix(rotation_matrix).as_quat()
+
+        arrow_pose.orientation.x = arrow_orientation[0]
+        arrow_pose.orientation.y = arrow_orientation[1]
+        arrow_pose.orientation.z = arrow_orientation[2]
+        arrow_pose.orientation.w = arrow_orientation[3]
+
+        marker.pose = arrow_pose
+
+        self.current_id += 1
+        return marker
+
+    def clear_all_markers(self):
+        """
+        Clears all markers in the MarkerArray and resets the current ID counter.
+        """
+        for marker in self.marker_array.markers:
+            marker.action = Marker.DELETE  # Set action to DELETE for each marker
+
+        # Publish the deletion
+        self.marker_pub.publish(self.marker_array)
+
+        # Clear the MarkerArray and reset ID
+        self.marker_array.markers.clear()
+        self.current_id = 0
 
 
 class AxisMarkerPublisher:
@@ -384,7 +773,7 @@ class AxisMarkerPublisher:
         :param length: Length of the line
         :param color: Color of the line if it should be personalized
         """
-
+        self.clear_all_markers()
         self.name = name
         self.poses = poses
         self.duration = duration
@@ -398,6 +787,11 @@ class AxisMarkerPublisher:
                               color.get_color_from_string('green'))
             self._create_line(pose, AxisIdentifier.Z.value, self.duration, self.length,
                               color.get_color_from_string('blue'))
+
+        if self.thread.is_alive():
+            self.thread.join()
+
+        self.thread = threading.Thread(target=self._publish)
 
         self.thread.start()
         # rospy.loginfo("Publishing axis visualization")
@@ -543,6 +937,20 @@ class AxisMarkerPublisher:
         # Update was not successful
         # rospy.logwarn(f"Marker {marker_id} not found for update")
         return False
+
+    def clear_all_markers(self):
+        """
+        Clears all markers in the MarkerArray and resets the current ID counter.
+        """
+        for marker in self.marker_array.markers:
+            marker.action = Marker.DELETE  # Set action to DELETE for each marker
+
+        # Publish the deletion
+        self.marker_pub.publish(self.marker_array)
+
+        # Clear the MarkerArray and reset ID
+        self.marker_array.markers.clear()
+        self.current_id = 0
 
 
 class CostmapPublisher:
