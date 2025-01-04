@@ -2046,7 +2046,8 @@
     <dynamics damping="1.0" friction="0.0"/>
   </joint>
     <joint name="r_gripper_tool_joint" type="fixed">
-    <origin rpy="0 0 0" xyz="0.05 0.0 0.0" />
+    <!--origin rpy="1.57079632679979 -0.261799319827 3.32244804390038e-17" xyz="-0.05 0.0 0.0" -->
+    <origin rpy="3.32244804390038e-17 -0.261799319827 3.14159" xyz="-0.05 0.0 0.0" />
     <parent link="r_hand" />
     <child link="r_gripper_tool_frame" />
   </joint>
