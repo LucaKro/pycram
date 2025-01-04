@@ -13,7 +13,7 @@ from .designator import ObjectDesignatorDescription
 from .designators.object_designator import ObjectPart
 from .external_interfaces.ik import request_ik
 from .helper import adjust_grasp_for_object_rotation, calculate_grasp_offset, \
-    calculate_rim_grasp, translate_relative_to_object
+    calculate_rim_grasp, translate_relative_to_object, round_pose
 from .local_transformer import LocalTransformer
 from .plan_failures import IKError
 from .robot_description import RobotDescription
@@ -123,6 +123,8 @@ class PoseGenerator:
         flat_values = self.costmap.map.flatten()
 
         non_zero_indices = np.nonzero(flat_values)[0]
+        if len(non_zero_indices) == 0:
+            return
         non_zero_weights = flat_values[non_zero_indices]
         number_of_samples = min(number_of_samples, len(non_zero_indices))
 
@@ -311,21 +313,16 @@ def reachability_validator(robot: Object,
     if not arms:
         arms = [Arms.LEFT, Arms.RIGHT]
 
-    manipulator_descs = [RobotDescription.current_robot_description.get_arm_chain(arm) for arm in arms]
+    manipulator_descs = [
+        RobotDescription.current_robot_description.get_arm_chain(arm)
+        for arm in arms
+        if RobotDescription.current_robot_description.get_arm_chain(arm) is not None
+    ]
 
     side_grasp, top_grasp, horizontal = used_grasp_config.side_face, used_grasp_config.top_face, used_grasp_config.horizontal
     res = False
     valid_arms = []
     validated_joint_states = []
-
-    if object_in_hand:
-        in_contact = collision_check(robot,
-                                     {object_in_hand.world_object.id: object_in_hand.world_object.root_link_name})
-    else:
-        in_contact = collision_check(robot, {})
-
-    if in_contact:
-        return res, valid_arms, validated_joint_states
 
     for description in manipulator_descs:
 
@@ -346,7 +343,7 @@ def reachability_validator(robot: Object,
         else:
             grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(
                 description.arm_type).end_effector.get_grasp(side_grasp, top_grasp, horizontal)
-            palm_axis = RobotDescription.current_robot_description.get_palm_axis()
+            palm_axis = description.end_effector.get_palm_axis()
             if hasattr(target, "obj_type") and target.obj_type == ObjectType.BOWL:
                 rim_offset = calculate_rim_grasp(target.world_object.get_object_dimensions(), side_grasp)
                 rim_direction = RobotDescription.current_robot_description.get_arm_chain(
@@ -362,18 +359,20 @@ def reachability_validator(robot: Object,
                 target_pose = translate_relative_to_object(target_pose, palm_axis, grasp_offset)
             retract_first = True if retract_first is None else retract_first
 
-        palm_axis = RobotDescription.current_robot_description.get_palm_axis()
+        palm_axis = description.end_effector.get_palm_axis()
+        target_pose = round_pose(target_pose)
         retract_target_pose = translate_relative_to_object(target_pose, palm_axis, translation_value)
         retract_target_pose = LocalTransformer().transform_pose(retract_target_pose, "map")
+        retract_target_pose = round_pose(retract_target_pose)
 
         joint_state_before_ik = robot.get_positions_of_all_joints()
 
+        # This currently causes the robot to sometimes collide with the apartment. Allow collision specifically with hand_links and object instead
         hand_links = [link for link in description.end_effector.links]
-
         allowed_collision = {robot: hand_links}
 
         try:
-
+            marker = AxisMarkerPublisher()
             # test the possible solution and apply it to the robot
             pose, joint_states = request_ik(retract_target_pose if retract_first else target_pose, robot, joints,
                                             tool_frame)

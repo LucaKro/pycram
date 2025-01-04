@@ -13,11 +13,11 @@ from ..datastructures.enums import JointType, Arms, Grasp, AccessingMode
 from ..datastructures.pose import Pose
 from ..datastructures.world import World, UseProspectionWorld
 from ..designator import DesignatorError, LocationDesignatorDescription
-from ..helper import calculate_grasp_configs
+from ..helper import calculate_grasp_descriptions
 from ..local_transformer import LocalTransformer
 from ..plan_failures import ReachabilityFailure
 from ..pose_generator_and_validator import PoseGenerator, visibility_validator, reachability_validator, \
-    MultiCostmapPoseGenerator, OrientationGenerator
+    MultiCostmapPoseGenerator, OrientationGenerator, collision_check
 from ..robot_description import RobotDescription, GraspDescription
 from ..ros.viz_marker_publisher import AxisMarkerPublisher
 from ..world_concepts.world_object import Object
@@ -190,7 +190,7 @@ class CostmapLocation(LocationDesignatorDescription):
 
         top_grasp = None
         if isinstance(self.target, ObjectDesignatorDescription.Object) and not self.used_grasp_config:
-            top_grasp = calculate_grasp_configs(self.target)[0].top_face
+            top_grasp = calculate_grasp_descriptions(self.target)[0].top_face
 
         if self.used_grasp_config:
             top_grasp = self.used_grasp_config.top_face
@@ -254,7 +254,7 @@ class CostmapLocation(LocationDesignatorDescription):
                     if self.used_grasp_config:
                         grasp_configurations = [self.used_grasp_config]
                     else:
-                        grasp_configurations = calculate_grasp_configs(self.target, test_robot)
+                        grasp_configurations = calculate_grasp_descriptions(self.target, test_robot)
 
                     for grasp_configuration in grasp_configurations:
                         grasp_config = grasp_configuration
@@ -267,8 +267,10 @@ class CostmapLocation(LocationDesignatorDescription):
                             res = res and valid
                             if res:
                                 break
-                        else:
-                            res = False
+                    if arms:
+                        res = res and valid
+                    else:
+                        res = False
 
                 if res:
                     yield self.Location(maybe_pose, arms, grasp_config)
@@ -400,19 +402,21 @@ class AccessingLocation(LocationDesignatorDescription):
             final_map.publish(weighted=True)
 
         prev_robot_state = test_robot.get_positions_of_all_joints()
-
         with (UseProspectionWorld()):
             for init_maybe_pose in PoseGenerator(final_map, number_of_samples=600,
                                                  orientation_generator=lambda p,
                                                                               o: OrientationGenerator.generate_origin_orientation(
                                                      p,
-                                                     half_pose)):
+                                                     init_pose)):
                 if final_map.world.allow_publish_debug_poses:
                     marker = AxisMarkerPublisher()
                     marker.publish([init_pose, half_pose, goal_pose, init_maybe_pose], length=0.5)
 
                 test_robot.set_pose(init_maybe_pose)
 
+                in_contact = collision_check(test_robot, {})
+                if in_contact:
+                    continue
                 prospection_world.set_joint_position(container_joint, init_joint_state)
                 valid_init, arms_init, init_joint_states = reachability_validator(robot=test_robot, target=self.handle,
                                                                                   arms=self.arms,
@@ -424,12 +428,16 @@ class AccessingLocation(LocationDesignatorDescription):
                     continue
 
                 prospection_world.set_joint_position(container_joint, goal_joint_state)
-                test_robot.set_joint_positions(init_joint_states[0])
-
-                valid_goal, arms_goal, _ = reachability_validator(robot=test_robot, target=self.handle, arms=arms_init,
-                                                                  used_grasp_config=grasp_config,
-                                                                  translation_value=0.05,
-                                                                  retract_first=False)
+                valid_goal, arms_goal = False, []
+                for arm, joints_states in zip(arms_init, init_joint_states):
+                    test_robot.set_joint_positions(joints_states)
+                    _valid_goal, _arms_goal, _ = reachability_validator(robot=test_robot, target=self.handle,
+                                                                        arms=[arm], used_grasp_config=grasp_config,
+                                                                        translation_value=0.05, retract_first=False)
+                    if _valid_goal:
+                        valid_goal = _valid_goal
+                        arms_goal.append(_arms_goal[0])
+                    test_robot.set_joint_positions(prev_robot_state)
                 goal_maybe_pose = init_maybe_pose.copy()
 
                 if not valid_goal:
@@ -444,11 +452,23 @@ class AccessingLocation(LocationDesignatorDescription):
                             marker.publish([goal_maybe_pose], length=0.5)
 
                         test_robot.set_pose(goal_maybe_pose)
-                        valid_goal, arms_goal, _ = reachability_validator(robot=test_robot, target=self.handle,
-                                                                          arms=arms_init,
-                                                                          used_grasp_config=grasp_config,
-                                                                          translation_value=0.05,
-                                                                          retract_first=False)
+
+                        valid_goal, arms_goal = False, []
+                        for arm, joints_states in zip(arms_init, init_joint_states):
+                            test_robot.set_joint_positions(joints_states)
+                            hand_links = RobotDescription.current_robot_description.get_arm_chain(arm).end_effector.links
+                            in_contact = collision_check(test_robot, {test_robot: hand_links})
+                            if in_contact:
+                                continue
+                            _valid_goal, _arms_goal, _ = reachability_validator(robot=test_robot, target=self.handle,
+                                                                                arms=[arm],
+                                                                                used_grasp_config=grasp_config,
+                                                                                translation_value=0.05,
+                                                                                retract_first=False)
+                            if _valid_goal:
+                                valid_goal = _valid_goal
+                                arms_goal.append(_arms_goal[0])
+                            test_robot.set_joint_positions(prev_robot_state)
 
                 if not valid_goal:
                     goal_ground_pose = goal_pose.copy()
@@ -465,24 +485,33 @@ class AccessingLocation(LocationDesignatorDescription):
                                                                   p,
                                                                   goal_pose))):
                         test_robot.set_pose(goal_maybe_pose)
-                        test_robot.set_joint_positions(init_joint_states[0])
-                        valid_goal, arms_goal, _ = reachability_validator(robot=test_robot,
-                                                                          target=self.handle,
-                                                                          arms=arms_init,
-                                                                          used_grasp_config=grasp_config,
-                                                                          translation_value=0.05,
-                                                                          retract_first=False)
 
+                        valid_goal, arms_goal = False, []
+                        for arm, joints_states in zip(arms_init, init_joint_states):
+                            test_robot.set_joint_positions(joints_states)
+                            _valid_goal, _arms_goal, _ = reachability_validator(robot=test_robot, target=self.handle,
+                                                                                arms=[arm],
+                                                                                used_grasp_config=grasp_config,
+                                                                                translation_value=0.05,
+                                                                                retract_first=False)
+                            if _valid_goal:
+                                valid_goal = _valid_goal
+                                arms_goal.append(_arms_goal[0])
+                            test_robot.set_joint_positions(prev_robot_state)
                         if valid_goal:
                             break
 
                 test_robot.set_joint_positions(prev_robot_state)
                 prospection_world.set_joint_position(container_joint, init_joint_state)
-                if valid_init and valid_goal:
-                    common_arms = list(set(arms_init) & set(arms_goal))
-                    if common_arms:
-                        yield self.Location(init_maybe_pose, common_arms, grasp_config), \
-                            self.Location(goal_maybe_pose, common_arms, grasp_config)
+
+                if valid_goal:
+                    break
+
+            if valid_init and valid_goal:
+                common_arms = list(set(arms_init) & set(arms_goal))
+                if common_arms:
+                    yield self.Location(init_maybe_pose, common_arms, grasp_config), \
+                        self.Location(goal_maybe_pose, common_arms, grasp_config)
 
 
 class SemanticCostmapLocation(LocationDesignatorDescription):
