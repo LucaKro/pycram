@@ -134,7 +134,6 @@ class RobotDescription:
         self.joints: List[str] = [j.name for j in self.urdf_object.joints]
         self.costmap_offset: float = 0.3
         self.max_reach = None
-        self.palm_axis = [0, 0, 1]
         self.distance_palm_to_tool_frame_left = None
         self.distance_palm_to_tool_frame_right = None
 
@@ -827,6 +826,8 @@ class EndEffectorDescription:
         self.grasps: Dict[Grasp, List[float]] = {}
         self.static_joint_states: Dict[GripperState, Dict[str, float]] = {}
         self._init_links_joints()
+        self.palm_axis = [0, 0, 1]
+
 
     def _init_links_joints(self):
         """
@@ -877,16 +878,18 @@ class EndEffectorDescription:
         """
         self.grasps.update(orientations)
 
-    def generate_all_grasp_orientations(self, front_orientation: List[float]):
+    def calculate_grasp_descriptions(self, front_orientation: List[float]) -> Dict[GraspDescription, List[float]]:
         """
-        Generates all grasp orientations based on a given front-facing orientation,
+        Calculates all grasp orientations based on a given front-facing orientation,
         covering combinations of side grasps (front, back, left, right),
         top/bottom grasps, and horizontal rotation options.
 
         Args:
             front_orientation (List[float]): A quaternion representing the front-facing orientation
                                              as [x, y, z, w].
-
+        Returns:
+            Dict[GraspDescription, List[float]]: A dictionary of GraspDescription objects and their corresponding
+                                                 orientations.
         """
 
         def mult(q1: List[float], q2: List[float]) -> List[float]:
@@ -913,6 +916,10 @@ class EndEffectorDescription:
             norm = math.sqrt(sum(comp ** 2 for comp in q))
             return [comp / norm for comp in q]
 
+        def invert(q: List[float]) -> List[float]:
+            """Inverts a quaternion."""
+            return [q[0], q[1], q[2], q[3]]
+
         sqrt2over2 = math.sqrt(2) / 2
 
         relative_rotations = {
@@ -924,7 +931,7 @@ class EndEffectorDescription:
 
         top_rotation = [0, sqrt2over2, 0, sqrt2over2]
         bottom_rotation = [0, -sqrt2over2, 0, sqrt2over2]
-        horizontal_rotation = [sqrt2over2, 0, 0, sqrt2over2]
+        horizontal_rotation = [sqrt2over2, 0, 0, sqrt2over2] # if self.name == "left_gripper" else [-sqrt2over2, 0, 0, sqrt2over2]
 
         all_orientations = {}
 
@@ -943,13 +950,25 @@ class EndEffectorDescription:
                         rotation = mult(rotation, tb_rotation)
 
                     if horizontal:
-                        rotation = mult(rotation, horizontal_rotation)
+                        if top_bot_grasp == Grasp.BOTTOM:
+                            rotation = mult(rotation, invert(horizontal_rotation))
+                        else:
+                            rotation = mult(rotation, horizontal_rotation)
 
                     orientation = mult(rotation, front_orientation)
                     orientation = normalize(orientation)
 
                     all_orientations[(side_grasp, top_bot_grasp, horizontal)] = orientation
+        return all_orientations
 
+    def generate_grasp_descriptions(self, front_orientation: List[float]):
+        """
+        Generates all grasp orientations based on a given front-facing orientation,
+        Args:
+            front_orientation (List[float]): A quaternion representing the front-facing orientation
+                                             as [x, y, z, w].
+        """
+        all_orientations = self.calculate_grasp_descriptions(front_orientation)
         self.grasps = all_orientations
 
     def get_grasp(self, grasp: Grasp, top_bot_grasp: Grasp = None, horizontal: bool = False) -> List[float]:
@@ -980,6 +999,24 @@ class EndEffectorDescription:
         :return: List of joint names
         """
         return self.joint_names
+
+    def set_palm_axis(self, axis: List[float]):
+        """
+        Sets the direction axis for the robot's palm.
+
+        Args:
+            axis (List[float]): A list representing the direction of the palm axis.
+        """
+        self.palm_axis = axis
+
+    def get_palm_axis(self) -> List[float]:
+        """
+        Retrieves the direction axis of the robot's palm.
+
+        Returns:
+            List[float]: The current direction of the palm axis.
+        """
+        return self.palm_axis
 
 
 @dataclass
