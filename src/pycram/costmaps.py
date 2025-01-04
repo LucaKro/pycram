@@ -309,10 +309,12 @@ class Costmap:
         max_val = new_map.max()
         if max_val > min_val:
             normalized_map = (new_map - min_val) / (max_val - min_val)
+            normalized_map = (normalized_map / np.max(normalized_map)).reshape((dimensions, dimensions))
+        elif max_val == 0:
+            normalized_map = np.zeros_like(new_map)
         else:
             normalized_map = np.ones_like(new_map)
 
-        normalized_map = (normalized_map / np.max(normalized_map)).reshape((dimensions, dimensions))
         return Costmap(larger_cm.resolution, dimensions, dimensions, larger_cm.origin, normalized_map)
 
     def __add__(self, other: Costmap) -> Costmap:
