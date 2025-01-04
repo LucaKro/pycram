@@ -16,8 +16,8 @@ from .motion_designator import MoveJointsMotion, MoveGripperMotion, MoveArmJoint
     LookingMotion, DetectingMotion, OpeningMotion, ClosingMotion
 from .object_designator import ObjectDesignatorDescription, BelieveObject, ObjectPart
 from .. import utils
-from ..helper import calculate_grasp_configs, adjust_grasp_for_object_rotation, \
-    calculate_grasp_offset, calculate_rim_grasp, translate_relative_to_object
+from ..helper import calculate_grasp_descriptions, adjust_grasp_for_object_rotation, \
+    calculate_grasp_offset, calculate_rim_grasp, translate_relative_to_object, round_pose
 from ..local_transformer import LocalTransformer
 from ..plan_failures import ObjectUnfetchable, ReachabilityFailure
 from ..robot_description import RobotDescription, GraspDescription
@@ -1191,7 +1191,7 @@ class PickUpActionPerformable(ActionAbstract):
         moving the robot arm to the pre-pick position, grasping, and lifting the object.
         """
         if not self.grasp_config:
-            self.grasp_config = calculate_grasp_configs(self.object_designator)[0]
+            self.grasp_config = calculate_grasp_descriptions(self.object_designator)[0]
 
         # Store the object's data copy at execution
         self.object_at_execution = self.object_designator.frozen_copy()
@@ -1200,7 +1200,7 @@ class PickUpActionPerformable(ActionAbstract):
         object = self.object_designator.world_object
         # oTm = Object Pose in Frame map
         oTm = object.get_pose().copy()
-        palm_axis = RobotDescription.current_robot_description.get_palm_axis()
+        palm_axis = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.get_palm_axis()
         side_grasp, top_grasp, horizontal = self.grasp_config.side_face, self.grasp_config.top_face, self.grasp_config.horizontal
         grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.get_grasp(side_grasp, top_grasp, horizontal)
 
@@ -1222,10 +1222,12 @@ class PickUpActionPerformable(ActionAbstract):
 
         grasp_offset = calculate_grasp_offset(object.get_object_dimensions(), self.arm, top_grasp if top_grasp else side_grasp)
         adjusted_oTm_grasp_pose = translate_relative_to_object(adjusted_oTm, palm_axis, grasp_offset)
+        adjusted_oTm_grasp_pose = round_pose(adjusted_oTm_grasp_pose)
 
         translation_value = 0.1  # hardcoded value for now
         oTm_prepose = translate_relative_to_object(adjusted_oTm_grasp_pose, palm_axis, translation_value)
         prepose = object.local_transformer.transform_pose(oTm_prepose, "map")
+        prepose = round_pose(prepose)
 
         if World.current_world.allow_publish_debug_poses:
             gripper_pose = World.robot.get_link_pose(
@@ -1288,6 +1290,8 @@ class PlaceActionPerformable(ActionAbstract):
         target_diff = self.target_location.to_transform("target").inverse_times(
             tcp_to_object.to_transform("object")).to_pose()
 
+        target_diff = round_pose(target_diff)
+
         if World.current_world.allow_publish_debug_poses:
             gripper_pose = World.robot.get_link_pose(
                 RobotDescription.current_robot_description.get_arm_chain(self.arm).get_tool_frame())
@@ -1297,10 +1301,10 @@ class PlaceActionPerformable(ActionAbstract):
         MoveGripperMotion(GripperState.OPEN, self.arm).perform()
         World.robot.detach(self.object_designator.world_object)
 
-        palm_axis = RobotDescription.current_robot_description.get_palm_axis()
+        palm_axis = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.get_palm_axis()
         translation_value = 0.1
         retract_pose = translate_relative_to_object(target_diff, palm_axis, translation_value)
-
+        retract_pose = round_pose(retract_pose)
         MoveTCPMotion(retract_pose, self.arm).perform()
 
 
@@ -1581,30 +1585,31 @@ class GraspingActionPerformable(ActionAbstract):
             side_grasp, top_grasp, horizontal = (Grasp.FRONT, None, False)
         else:
             object_pose = self.object_desig.world_object.get_pose()
-            side_grasp, top_grasp, horizontal = calculate_grasp_configs(self.object_desig)[0].as_list()
+            side_grasp, top_grasp, horizontal = calculate_grasp_descriptions(self.object_desig)[0].as_list()
 
         # TODO: there is a difference in which side faces the object during costmap and execution, so hardcoded for now, fix it
         # grasp = calculate_object_faces(self.object_desig)[0]
 
         grasp_orientation = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.get_grasp(side_grasp, top_grasp, horizontal)
 
-        object_pose = adjust_grasp_for_object_rotation(object_pose, grasp_orientation)
+        adjusted_oTm = adjust_grasp_for_object_rotation(object_pose, grasp_orientation)
+        adjusted_oTm = round_pose(adjusted_oTm)
 
-        palm_axis = RobotDescription.current_robot_description.get_palm_axis()
+        palm_axis = RobotDescription.current_robot_description.get_arm_chain(self.arm).end_effector.get_palm_axis()
         translation_value = 0.05
         local_transformer = LocalTransformer()
-        oTm_prepose = translate_relative_to_object(object_pose, palm_axis, translation_value)
-
+        oTm_prepose = translate_relative_to_object(adjusted_oTm, palm_axis, translation_value)
         prepose = local_transformer.transform_pose(oTm_prepose, "map")
+        prepose = round_pose(prepose)
 
         if World.current_world.allow_publish_debug_poses:
             marker = AxisMarkerPublisher()
-            marker.publish([object_pose, prepose], name="Grasping", length=0.3)
+            marker.publish([adjusted_oTm, prepose], name="Grasping", length=0.3)
 
         MoveTCPMotion(prepose, self.arm).perform()
         MoveGripperMotion(GripperState.OPEN, self.arm).perform()
 
-        MoveTCPMotion(object_pose, self.arm, allow_gripper_collision=True).perform()
+        MoveTCPMotion(adjusted_oTm, self.arm, allow_gripper_collision=True).perform()
         MoveGripperMotion(GripperState.CLOSE, self.arm, allow_gripper_collision=True).perform()
 
 
