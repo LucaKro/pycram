@@ -9,6 +9,7 @@ filename = rospack.get_path('pycram') + '/resources/robots/' + '{{ robot_name }}
 {{ robot_description_var }} = RobotDescription("{{ robot_name }}", "{{ root_frame }}", "{{ torso_start_link }}", "{{ torso_start_joint }}",
                                                filename)
 
+{% if left_arm_identified %}
 ################################## Left Arm ##################################
 left_arm = KinematicChainDescription("left", "{{ start_torso_parent_link }}", "{{ left_arm_end_link }}",
                                      {{ robot_description_var }}.urdf_object, arm_type=Arms.LEFT)
@@ -17,7 +18,6 @@ left_arm.add_static_joint_states("park", {{ left_arm_park_states }})
 
 {{ robot_description_var }}.add_kinematic_chain_description(left_arm)
 
-################################## Left Gripper ##################################
 left_gripper = EndEffectorDescription("left_gripper", "{{ left_gripper_parent_link }}", "{{ left_tool_frame }}",
                                       {{ robot_description_var }}.urdf_object)
 left_gripper.add_static_joint_states(GripperState.OPEN, {{ left_gripper_open_states }})
@@ -26,7 +26,9 @@ left_gripper.add_static_joint_states(GripperState.CLOSE, {{ left_gripper_close_s
 left_gripper.end_effector_type = {{ left_gripper_type }}
 left_gripper.opening_distance = {{ left_gripper_opening_distance }}
 left_arm.end_effector = left_gripper
+{% endif %}
 
+{% if right_arm_identified %}
 ################################## Right Arm ##################################
 right_arm = KinematicChainDescription("right", "{{ start_torso_parent_link }}", "{{ right_arm_end_link }}",
                                       {{ robot_description_var }}.urdf_object, arm_type=Arms.RIGHT)
@@ -35,7 +37,6 @@ right_arm.add_static_joint_states("park", {{ right_arm_park_states }})
 
 {{ robot_description_var }}.add_kinematic_chain_description(right_arm)
 
-################################## Right Gripper ##################################
 right_gripper = EndEffectorDescription("right_gripper", "{{ right_gripper_parent_link }}", "{{ right_tool_frame }}",
                                        {{ robot_description_var }}.urdf_object)
 right_gripper.add_static_joint_states(GripperState.OPEN, {{ right_gripper_open_states }})
@@ -44,6 +45,7 @@ right_gripper.add_static_joint_states(GripperState.CLOSE, {{ right_gripper_close
 right_gripper.end_effector_type = {{ right_gripper_type }}
 right_gripper.opening_distance = {{ right_gripper_opening_distance }}
 right_arm.end_effector = right_gripper
+{% endif %}
 
 ################################## Torso ##################################
 torso = KinematicChainDescription("torso", "{{ start_torso_parent_link }}", "{{ torso_end_link }}",
@@ -66,14 +68,17 @@ camera = CameraDescription("{{ camera_name }}", "{{ camera_link }}", {{ min_heig
 {{ robot_description_var }}.set_neck("{{ neck_yaw_joint }}", "{{ neck_pitch_joint }}")
 
 ################################# Grasps ##################################
+{% if right_arm_identified %}
 right_orientation = {{ right_grasp_orientation }}
 right_gripper.generate_grasp_descriptions(right_orientation)
 right_gripper.set_palm_axis({{ right_palm_axis }})
+{% endif %}
 
+{% if left_arm_identified %}
 left_orientation = {{ left_grasp_orientation }}
 left_gripper.generate_grasp_descriptions(left_orientation)
 left_gripper.set_palm_axis({{ left_palm_axis }})
-
+{% endif %}
 
 ################################# Additionals ##################################
 # {{ robot_description_var }}.set_costmap_offset({{ costmap_offset }})
