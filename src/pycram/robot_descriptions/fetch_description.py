@@ -27,24 +27,6 @@ left_gripper.end_effector_type = GripperType.PARALLEL
 left_gripper.opening_distance = 0.0
 left_arm.end_effector = left_gripper
 
-################################## Right Arm ##################################
-right_arm = KinematicChainDescription("right", "base_link", "",
-                                      fetch_description.urdf_object, arm_type=Arms.RIGHT)
-
-right_arm.add_static_joint_states("park", {})
-
-fetch_description.add_kinematic_chain_description(right_arm)
-
-################################## Right Gripper ##################################
-right_gripper = EndEffectorDescription("right_gripper", "", "",
-                                       fetch_description.urdf_object)
-right_gripper.add_static_joint_states(GripperState.OPEN, {})
-right_gripper.add_static_joint_states(GripperState.CLOSE, {})
-
-right_gripper.end_effector_type = GripperType.PARALLEL
-right_gripper.opening_distance = 0.0
-right_arm.end_effector = right_gripper
-
 ################################## Torso ##################################
 torso = KinematicChainDescription("torso", "base_link", "torso_lift_link",
                                   fetch_description.urdf_object)
@@ -66,10 +48,6 @@ fetch_description.add_kinematic_chain("neck", "torso_lift_link", "head_tilt_link
 fetch_description.set_neck("head_pan_joint", "head_tilt_joint")
 
 ################################# Grasps ##################################
-right_orientation = [0, 0, 0, 0]
-right_gripper.generate_grasp_descriptions(right_orientation)
-right_gripper.set_palm_axis([0, 0, 0])
-
 left_orientation = [0.0, 0.0, 0.0, 1.0]
 left_gripper.generate_grasp_descriptions(left_orientation)
 left_gripper.set_palm_axis([1.0, 0.0, 0.0])
