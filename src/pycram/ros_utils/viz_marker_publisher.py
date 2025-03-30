@@ -73,9 +73,13 @@ class VizMarkerPublisher:
                 geoms = obj.get_link_geometry(link)
                 geom = None
                 if geoms:
-                    logerr(f"--------------")
+                    logerr("---------------")
                     logerr(f"geoms: {geoms}")
-                    geom = geoms[0] if len(geoms) > 0 else None
+                    try:
+                        length = len(geoms)
+                        geom = geoms[0] if length > 0 else None
+                    except TypeError:
+                        geom = geoms
                     logerr(f"geom: {geom}")
                 if not geom:
                     continue
