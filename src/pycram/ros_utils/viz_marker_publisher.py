@@ -1,4 +1,5 @@
 import atexit
+import logging
 import threading
 import time
 from functools import cached_property
@@ -71,6 +72,8 @@ class VizMarkerPublisher:
                 continue
             for link in obj.link_name_to_id.keys():
                 geoms = obj.get_link_geometry(link)
+                print("Debug info test", flush=True)
+                logging.error("Debug info test2")
                 try:
                     length = len(geoms)
                     geom = geoms[0] if length > 0 else None
