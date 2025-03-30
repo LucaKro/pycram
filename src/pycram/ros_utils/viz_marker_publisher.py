@@ -71,8 +71,12 @@ class VizMarkerPublisher:
                 continue
             for link in obj.link_name_to_id.keys():
                 geoms = obj.get_link_geometry(link)
-                length = len(geoms)
-                geom = geoms[0] if length > 0 else None
+                try:
+                    length = len(geoms)
+                    geom = geoms[0] if length > 0 else None
+                except Exception as e:
+                    logerr(f"geoms: {geoms}, Exception: {e}")
+                    continue
                 if not geom:
                     continue
                 msg = Marker()
