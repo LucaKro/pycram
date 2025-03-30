@@ -46,7 +46,7 @@ class LinkDescription(AbstractLinkDescription):
         """
         all_geoms = self.parsed_description.find_all('geom')
         if len(all_geoms) == 0:
-            return None
+            return []
         elif len(all_geoms) == 1:
             return self._get_visual_shape(all_geoms[0])
         else:

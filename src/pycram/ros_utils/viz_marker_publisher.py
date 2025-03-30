@@ -75,11 +75,8 @@ class VizMarkerPublisher:
                 if geoms:
                     logerr("---------------")
                     logerr(f"geoms: {geoms}")
-                    try:
-                        length = len(geoms)
-                        geom = geoms[0] if length > 0 else None
-                    except TypeError:
-                        geom = geoms
+                    length = len(geoms)
+                    geom = geoms[0] if length > 0 else None
                     logerr(f"geom: {geom}")
                 if not geom:
                     continue
