@@ -45,9 +45,13 @@ class LinkDescription(AbstractLinkDescription):
         :return: The geometry type of the collision element of this link.
         """
         all_geoms = self.parsed_description.find_all('geom')
-        if len(all_geoms) == 0:
+        if all_geoms is None:
             return []
-        elif len(all_geoms) == 1:
+        try:
+            length = len(all_geoms)
+        except TypeError:
+            return [self._get_visual_shape(all_geoms)]
+        if len(all_geoms) == 1:
             return self._get_visual_shape(all_geoms[0])
         else:
             return [self._get_visual_shape(geom) for geom in all_geoms]
