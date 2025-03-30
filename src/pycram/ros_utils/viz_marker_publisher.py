@@ -76,6 +76,7 @@ class VizMarkerPublisher:
                     geom = geoms[0] if length > 0 else None
                 except Exception as e:
                     logerr(f"geoms: {geoms}, Exception: {e}")
+                    print(f"geoms: {geoms}, Exception: {e}")
                     continue
                 if not geom:
                     continue
