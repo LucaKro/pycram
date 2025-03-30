@@ -35,7 +35,10 @@ class LinkDescription(AbstractLinkDescription):
 
     @property
     def geometry(self) -> Union[VisualShape, None]:
-        return self.parsed_description
+        if self.parsed_description:
+            return self.parsed_description
+        else:
+            return []
 
     @property
     def origin(self) -> Pose:
