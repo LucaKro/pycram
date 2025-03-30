@@ -70,7 +70,10 @@ class VizMarkerPublisher:
             if obj.name == "floor":
                 continue
             for link in obj.link_name_to_id.keys():
-                geom = obj.get_link_geometry(link)
+                geoms = obj.get_link_geometry(link)
+                geom = None
+                if geoms is not None:
+                    geom = geoms[0] if len(geoms) > 0 else None
                 if not geom:
                     continue
                 msg = Marker()
