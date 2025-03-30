@@ -72,9 +72,9 @@ class VizMarkerPublisher:
                 continue
             for link in obj.link_name_to_id.keys():
                 geoms = obj.get_link_geometry(link)
-                if not isinstance(geoms, list):
-                    print(f"geoms: {geoms}", flush=True)
-                    geoms = [geoms]
+                # if not isinstance(geoms, list):
+                #     print(f"geoms: {geoms}", flush=True)
+                #     geoms = [geoms]
                 length = len(geoms)
                 geom = geoms[0] if length > 0 else None
                 if not geom:
