@@ -1,13 +1,14 @@
 import pathlib
 import unittest
 
-from pycram.datastructures.pose import GraspDescription
 from pycram.robot_description import RobotDescription, KinematicChainDescription, EndEffectorDescription, \
     CameraDescription, RobotDescriptionManager
 from pycram.datastructures.enums import Arms, GripperState, StaticJointState, Grasp, ApproachDirection, \
     VerticalAlignment
-from pycram.object_descriptors.urdf import ObjectDescription as URDF
-
+try:
+    from pycram.object_descriptors.urdf import ObjectDescription as URDF
+except ImportError:
+    ...
 
 class TestRobotDescription(unittest.TestCase):
 
@@ -204,6 +205,7 @@ class TestRobotDescription(unittest.TestCase):
         self.assertEqual(len(robot_description.joints), 10)
 
     def test_grasp_descriptions(self):
+        from pycram.datastructures.grasp import GraspDescription
         grasp1 = GraspDescription(ApproachDirection.LEFT, VerticalAlignment.TOP, True)
         grasp2 = GraspDescription(ApproachDirection.BACK, VerticalAlignment.BOTTOM, False)
         grasp3 = GraspDescription(ApproachDirection.RIGHT, VerticalAlignment.NoAlignment, True)

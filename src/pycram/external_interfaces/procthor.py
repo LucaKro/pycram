@@ -2,7 +2,7 @@ import os
 import random
 import tarfile
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 from urllib.parse import urljoin
 
 import requests
@@ -70,22 +70,25 @@ class ProcTHORInterface:
         with tarfile.open(os.path.join(self.project_root, "tmp", filename), mode) as tar:
             tar.extractall(path=extract_to)
 
-    def sample_environment(self, keep_environment: bool = False):
+    def sample_environment(self, house_number: Optional[int] = None, keep_environment: bool = False):
         """
         Fetch and extract a random selection of environments packed in .tar.gz files from a URL.
 
         :param keep_environment: If True, the environments will be kept in the resources directory, otherwise they will be
         """
-        links = self.get_tarball_links()
-        selected_link = random.choice(links)
         if not keep_environment:
             output_dir = os.path.join(self.project_root, "tmp")
         else:
             output_dir = os.path.join(self.project_root, "resources/procthor_environments")
 
-        filename = os.path.basename(selected_link)
+        if house_number is None:
+            links = self.get_tarball_links()
+            selected_link = random.choice(links)
+            filename = os.path.basename(selected_link)
+        else:
+            filename = f"dataset_house_{house_number}.tar.gz"
         environment_name = os.path.splitext(os.path.splitext(filename)[0])[0]
-        self.download_file(selected_link, filename)
+        self.download_file(urljoin(self.base_url, filename), filename)
         self.extract_tar(filename, output_dir)
         os.remove(os.path.join(self.project_root, "tmp", filename))
         return output_dir, environment_name + "_decomposed"

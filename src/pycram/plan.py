@@ -9,7 +9,6 @@ import networkx as nx
 import numpy as np
 import rustworkx as rx
 import rustworkx.visualization
-from mercurial.revset import children
 from semantic_world.robots import AbstractRobot
 from semantic_world.world import World
 from typing_extensions import Optional, Callable, Any, Dict, List, Iterable, TYPE_CHECKING, Type, Tuple, Iterator

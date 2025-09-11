@@ -4,8 +4,8 @@ from copy import deepcopy
 
 import numpy as np
 from semantic_world.collision_checking.collision_detector import CollisionCheck
-from semantic_world.ik_solver import MaxIterationsException, UnreachableException
-from semantic_world.world_entity import Body
+from semantic_world.spatial_computations.ik_solver import MaxIterationsException
+from semantic_world.world_description.world_entity import Body
 from semantic_world.world import World
 
 from pycrap.ontologies import PhysicalObject

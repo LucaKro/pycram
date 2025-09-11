@@ -14,9 +14,9 @@ from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import P
 from random_events.interval import Interval, reals, closed_open, closed
 from random_events.product_algebra import Event, SimpleEvent
 from random_events.variable import Continuous
-from semantic_world.raytracer import RayTracer
+from semantic_world.spatial_computations.raytracer import RayTracer
 from semantic_world.world import World
-from semantic_world.world_entity import Body
+from semantic_world.world_description.world_entity import Body
 from typing_extensions import Tuple, List, Optional, Iterator
 
 from .datastructures.dataclasses import AxisAlignedBoundingBox

@@ -8,7 +8,7 @@ from typing import Tuple
 
 import numpy as np
 from semantic_world.robots import Manipulator, AbstractRobot
-from semantic_world.world_entity import View, Body
+from semantic_world.world_description.world_entity import View, Body
 from typing_extensions import Optional, Union, List
 from scipy.spatial.transform import Rotation as R
 
@@ -70,7 +70,7 @@ class GraspDescription(HasParameters):
         rim_direction_index = approach_direction.value[0].value.index(1)
 
         # TODO the 0 index of the bounding_boxes is temporarily and needs to be better handled
-        rim_offset = body.as_bounding_box_collection_in_frame(body).bounding_boxes[0].dimensions[rim_direction_index] / 2
+        rim_offset = body.collision[0].local_frame_bounding_box.dimensions[rim_direction_index] / 2
 
         grasp_pose.rotate_by_quaternion(self.calculate_grasp_orientation(end_effector.front_facing_orientation.to_np()))
         if translate_rim_offset:

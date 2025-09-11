@@ -20,7 +20,7 @@ from semantic_world.collision_checking.trimesh_collision_detector import Trimesh
 from semantic_world.robots import AbstractRobot
 from semantic_world.spatial_types.spatial_types import TransformationMatrix
 from semantic_world.world import World
-from semantic_world.world_entity import Body
+from semantic_world.world_description.world_entity import Body
 from sortedcontainers import SortedSet
 from typing_extensions import List, Union, Iterable, Optional, Iterator, Dict, Tuple
 

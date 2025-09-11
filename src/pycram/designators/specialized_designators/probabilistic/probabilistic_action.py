@@ -19,11 +19,12 @@ from ....datastructures.enums import Arms, Grasp, VerticalAlignment, ApproachDir
 from ....datastructures.grasp import GraspDescription
 from ....datastructures.partial_designator import PartialDesignator
 from ....datastructures.pose import PoseStamped
-from ....datastructures.world import World
+# from ....datastructures.world import World
+World = None
 from ....parameterizer import collision_free_event
 from ....utils import classproperty
-from ....world_concepts.world_object import Object
-
+# from ....world_concepts.world_object import Object
+Object = None
 
 class Variables(enum.Enum):
     """
