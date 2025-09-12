@@ -59,7 +59,6 @@ apartment_world = URDFParser.from_file(
         "..",
         "resources",
         "worlds",
-        "chemical_laboratory",
         "chemical_laboratory.urdf",
     )
 ).parse()
@@ -72,7 +71,7 @@ incubator_world = URDFParser.from_file(
         "resources",
         "objects",
         "incubator",
-        "incubator.urdf",
+        "incubator_correct_rotation.urdf",
     )
 ).parse()
 
@@ -104,7 +103,7 @@ apartment_world.merge_world(
         apartment_world.root,
         incubator_world.root,
         TransformationMatrix.from_xyz_rpy(
-            0.5, 1, 1.25, 0, 0, 0, reference_frame=apartment_world.root
+            0.5, 0.75, 1.25, 0, 0, np.pi, reference_frame=apartment_world.root
         ),
     ),
     handle_duplicates=True,
@@ -137,7 +136,8 @@ thread.start()
 
 viz = VizMarkerPublisher(world=apartment_world, node=node, visuals_if_available=True)
 
-
+print(len(apartment_world.bodies))
+print(len(apartment_world.bodies_with_enabled_collision))
 park_arms = ParkArmsActionDescription([Arms.BOTH])
 open_left_gripper = SetGripperActionDescription([Arms.LEFT], [GripperState.OPEN])
 open_right_gripper = SetGripperActionDescription([Arms.RIGHT], [GripperState.OPEN])
@@ -145,7 +145,7 @@ close_left_gripper = SetGripperActionDescription([Arms.LEFT], [GripperState.CLOS
 close_right_gripper = SetGripperActionDescription([Arms.RIGHT], [GripperState.CLOSE])
 
 grasp_description = GraspDescription(
-    ApproachDirection.RIGHT, VerticalAlignment.NoAlignment, True
+    ApproachDirection.FRONT, VerticalAlignment.NoAlignment, True
 )
 pullout = PullOutActionDescription(
     apartment_world.get_body_by_name("tray"), [Arms.LEFT], [grasp_description]
@@ -180,7 +180,7 @@ place_tray = PlaceActionDescription(
     apartment_world.get_body_by_name("tray"),
     PoseStamped.from_spatial_type(
         TransformationMatrix.from_xyz_rpy(
-            x=1.4,
+            x=1.2,
             y=0.5,
             z=0.17,
             roll=np.pi / 2,
@@ -202,7 +202,7 @@ plan = SequentialPlan(
     pullout,
     inspect_tray,
     place_tray,
-    # close_incubator,
+    close_incubator,
     park_arms,
 )
 with simulated_robot:

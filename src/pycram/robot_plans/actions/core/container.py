@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -10,7 +11,14 @@ from .pick_up import GraspingActionDescription
 from ...motions.container import OpeningMotion, ClosingMotion
 from ...motions.gripper import MoveGripperMotion
 from ....config.action_conf import ActionConfig
-from ....datastructures.enums import Arms, GripperState, ContainerManipulationType
+from ....datastructures.enums import (
+    Arms,
+    GripperState,
+    ContainerManipulationType,
+    ApproachDirection,
+    VerticalAlignment,
+)
+from ....datastructures.grasp import GraspDescription
 from ....datastructures.partial_designator import PartialDesignator
 from ....failures import ContainerManipulationError
 from ....has_parameters import has_parameters
@@ -39,12 +47,21 @@ class OpenAction(ActionDescription):
     """
 
     def plan(self) -> None:
+        grasp_description = GraspDescription(
+            approach_direction=ApproachDirection.FRONT,
+            vertical_alignment=VerticalAlignment.NoAlignment,
+            rotate_gripper=False,
+        )
         SequentialPlan(
             self.context,
+            self.robot_view,
             GraspingActionDescription(
-                self.object_designator, self.arm, self.grasping_prepose_distance
+                self.object_designator,
+                self.arm,
+                grasp_description,
+                self.grasping_prepose_distance,
             ),
-            OpeningMotion(self.object_designator, self.arm),
+            OpeningMotion(self.object_designator, self.arm, grasp_description),
             MoveGripperMotion(
                 GripperState.OPEN, self.arm, allow_gripper_collision=True
             ),
@@ -97,12 +114,21 @@ class CloseAction(ActionDescription):
     """
 
     def plan(self) -> None:
+        grasp_description = GraspDescription(
+            approach_direction=ApproachDirection.FRONT,
+            vertical_alignment=VerticalAlignment.NoAlignment,
+            rotate_gripper=False,
+        )
         SequentialPlan(
             self.context,
+            self.robot_view,
             GraspingActionDescription(
-                self.object_designator, self.arm, self.grasping_prepose_distance
+                self.object_designator,
+                self.arm,
+                grasp_description,
+                self.grasping_prepose_distance,
             ),
-            ClosingMotion(self.object_designator, self.arm),
+            ClosingMotion(self.object_designator, self.arm, grasp_description),
             MoveGripperMotion(
                 GripperState.OPEN, self.arm, allow_gripper_collision=True
             ),

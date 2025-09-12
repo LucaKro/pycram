@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 
@@ -81,7 +82,7 @@ class ReachToPickUpAction(ActionDescription):
         translate_rim_offset = False
         if self.object_designator.name.name == "tray":
             # For some reason translates in Z direction
-            translate_rim_offset = False
+            translate_rim_offset = True
 
         target_pose = self.grasp_description.get_grasp_pose(
             end_effector,
@@ -90,8 +91,8 @@ class ReachToPickUpAction(ActionDescription):
         )
         target_pre_pose = translate_pose_along_local_axis(
             target_pose,
-            end_effector.front_facing_axis.to_np()[:3],
-            ActionConfig.pick_up_prepose_distance,
+            end_effector.front_facing_axis,
+            -ActionConfig.pick_up_prepose_distance,
         )
 
         SequentialPlan(
@@ -100,7 +101,6 @@ class ReachToPickUpAction(ActionDescription):
             MoveGripperMotion(motion=GripperState.OPEN, gripper=self.arm),
         ).perform()
 
-        print(f"Moving to pre-pose: {target_pre_pose}")
         self.move_gripper_to_pose(target_pre_pose)
 
         self.move_gripper_to_pose(target_pose, MovementType.STRAIGHT_CARTESIAN)
@@ -224,12 +224,11 @@ class PullOutAction(ActionDescription):
 
         pull_out_pose = PoseStamped.from_spatial_type(
             TransformationMatrix.from_xyz_rpy(
-                y=-0.3,
-                yaw=np.pi / 2,
-                roll=np.pi / 2,
+                x=-0.3,
                 reference_frame=self.object_designator,
             ),
         )
+        self.grasp_description.get_grasp_pose(end_effector, pull_out_pose)
 
         self.move_gripper_to_pose(pull_out_pose)
 
@@ -394,29 +393,27 @@ class GraspingAction(ActionDescription):
     """
     The arm that should be used to grasp
     """
+    grasp_description: GraspDescription
     prepose_distance: float = ActionConfig.grasping_prepose_distance
     """
     The distance in meters the gripper should be at before grasping the object
     """
 
     def plan(self) -> None:
-        object_pose = PoseStamped.from_spatial_type(self.object_designator.global_pose)
         end_effector = ViewManager.get_end_effector_view(self.arm, self.robot_view)
-
-        object_pose_in_gripper = self.world.transform(
-            self.world.compute_forward_kinematics(
-                self.world.root, self.object_designator
-            ),
-            end_effector.tool_frame,
+        object_pose = self.grasp_description.get_grasp_pose(
+            end_effector, self.object_designator
         )
-        object_pose_in_gripper = PoseStamped.from_spatial_type(object_pose_in_gripper)
-
-        object_pose_in_gripper.pose.position.x -= self.prepose_distance
+        object_pre_pose = translate_pose_along_local_axis(
+            object_pose,
+            end_effector.front_facing_axis,
+            -self.prepose_distance,
+        )
 
         SequentialPlan(
             self.context,
             self.robot_view,
-            MoveTCPMotion(object_pose_in_gripper, self.arm),
+            MoveTCPMotion(object_pre_pose, self.arm),
             MoveGripperMotion(GripperState.OPEN, self.arm),
             MoveTCPMotion(object_pose, self.arm, allow_gripper_collision=True),
             MoveGripperMotion(
@@ -441,6 +438,7 @@ class GraspingAction(ActionDescription):
         cls,
         object_designator: Union[Iterable[Body], Body],
         arm: Union[Iterable[Arms], Arms] = None,
+        grasp_description: Union[Iterable[GraspDescription], GraspDescription] = None,
         prepose_distance: Union[
             Iterable[float], float
         ] = ActionConfig.grasping_prepose_distance,
@@ -449,6 +447,7 @@ class GraspingAction(ActionDescription):
             GraspingAction,
             object_designator=object_designator,
             arm=arm,
+            grasp_description=grasp_description,
             prepose_distance=prepose_distance,
         )
 

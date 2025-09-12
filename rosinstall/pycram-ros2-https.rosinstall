@@ -1,13 +1,17 @@
 repositories:
-  iai_maps:
+  ros2_robotiq_gripper:
     type: git
-    url: https://github.com/code-iai/iai_maps.git
-    version: ros-jazzy
+    url: https://github.com/PickNikRobotics/ros2_robotiq_gripper.git
+    version: humble
   pycram:
     type: git
-    url: https://github.com/cram2/pycram.git
-    version: dev
-  iai_pr2:
+    url: https://github.com/LucaKro/pycram.git
+    version: laboratory_demo
+  Universal_Robots_ROS2_Description:
     type: git
-    url: https://github.com/code-iai/iai_pr2.git
-    version: ros-jazzy-main
+    url: https://github.com/UniversalRobots/Universal_Robots_ROS2_Description.git
+    version: jazzy
+  iai_tracy:
+    type: git
+    url: https://github.com/code-iai/iai_tracy.git
+    version: ros2-jazzy

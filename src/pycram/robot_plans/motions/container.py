@@ -4,6 +4,7 @@ from semantic_world.world_description.world_entity import Body
 
 from .base import BaseMotion
 from ...datastructures.enums import Arms
+from ...datastructures.grasp import GraspDescription
 from ...process_module import ProcessModuleManager
 
 
@@ -21,6 +22,7 @@ class OpeningMotion(BaseMotion):
     """
     Arm that should be used
     """
+    grasp_description: GraspDescription
 
     def perform(self):
         pm_manager = ProcessModuleManager().get_manager(self.world)
@@ -41,6 +43,7 @@ class ClosingMotion(BaseMotion):
     """
     Arm that should be used
     """
+    grasp_description: GraspDescription
 
     def perform(self):
         pm_manager = ProcessModuleManager().get_manager(self.world)

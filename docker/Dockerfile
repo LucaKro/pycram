@@ -1,23 +1,25 @@
-ARG FROM_IMAGE=ros:noetic-ros-core
+# has to be called from the root dir of the repo with "sudo docker build -f docker/ros2/Dockerfile ." otherwise COPY will
+# not work
+
+ARG FROM_IMAGE=ros:jazzy
 ARG OVERLAY_WS=/opt/ros/overlay_ws
 
-FROM $FROM_IMAGE AS cacher
-
-ARG OVERLAY_WS
-
-RUN apt-get update && apt-get install python3-pip python3-vcstool git default-jre python3-catkin-tools ros-$ROS_DISTRO-xacro -y && pip3 install pip --upgrade
-RUN pip3 install rosdep && rosdep init
-
+FROM $FROM_IMAGE as builder
+ARG OVERLAY_WS=/opt/ros/overlay_ws
 WORKDIR $OVERLAY_WS/src
-COPY . pycram
-RUN vcs import --skip-existing $OVERLAY_WS/src < pycram/rosinstall/pycram-https.rosinstall
-RUN rosdep update && rosdep install --from-paths $OVERLAY_WS/src --ignore-src -r -y
+SHELL ["/bin/bash", "-c"]
 
-RUN . /opt/ros/$ROS_DISTRO/setup.sh && cd $OVERLAY_WS && catkin build
-RUN echo "source $OVERLAY_WS/devel/setup.bash" >> ~/.bashrc
+RUN apt update && apt install python3.12-venv ros-jazzy-xacro python3-vcstool git ros-dev-tools default-jre -y
+RUN apt update && apt install python3.12-venv ros-jazzy-xacro python3-vcstool git ros-dev-tools default-jre graphviz graphviz-dev -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN vcs import --input https://raw.githubusercontent.com/LucaKro/pycram/laboratory_demo/rosinstall/pycram-ros2-https.rosinstall
+RUN vcs import --input https://raw.githubusercontent.com/LucaKro/semantic_world/laboratory_demo/rosinstall/semantic_world-https.rosinstall
+RUN touch ros2_robotiq_gripper/robotiq_controllers/COLCON_IGNORE
+RUN touch ros2_robotiq_gripper/robotiq_driver/COLCON_IGNORE
+RUN touch ros2_robotiq_gripper/robotiq_hardware_tests/COLCON_IGNORE
 
-RUN pip3 install --upgrade pip
-WORKDIR $OVERLAY_WS/src/pycram
-RUN pip3 install -r requirements.txt
+RUN python3 -m venv pycram-venv --system-site-packages  && source pycram-venv/bin/activate && pip install -U pip && pip install -U setuptools pip && install -r $OVERLAY_WS/src/pycram/requirements.txt && pip install -r semantic_world/requirements.txt && pip install https://nc.uni-bremen.de/public.php/dav/files/nxxi4QSBcYmmxba/?accept=zip && pip install -e semantic_world
+RUN source /opt/ros/jazzy/setup.bash && cd $OVERLAY_WS && colcon build --symlink-install
+RUN echo "source $OVERLAY_WS/install/setup.bash" >> ~/.bashrc
 
-EXPOSE 11311
+# RUN rm -rf $OVERLAY_WS/src/pycram
+# COPY . $OVERLAY_WS/src/pycram

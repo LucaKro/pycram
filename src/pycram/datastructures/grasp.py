@@ -18,6 +18,7 @@ from .pose import PoseStamped, Pose, Vector3, Quaternion
 from ..has_parameters import HasParameters, has_parameters
 from ..tf_transformations import quaternion_multiply
 from ..utils import translate_pose_along_local_axis
+from semantic_world.spatial_types.spatial_types import Vector3 as SemVector3
 
 
 # @has_parameters
@@ -52,7 +53,7 @@ class GraspDescription(HasParameters):
         return [self.approach_direction, self.vertical_alignment, self.rotate_gripper]
 
 
-    def get_grasp_pose(self, end_effector: Manipulator, body: Body, translate_rim_offset: bool = False) -> PoseStamped:
+    def get_grasp_pose(self, end_effector: Manipulator, body: Union[Body, PoseStamped], translate_rim_offset: bool = False) -> PoseStamped:
         """
         Translates the grasp pose of the object using the desired grasp description and object knowledge.
         Leaves the orientation untouched.
@@ -64,17 +65,24 @@ class GraspDescription(HasParameters):
 
         :return: The grasp pose of the object.
         """
+        if isinstance(body, PoseStamped):
+            grasp_pose = body
+            grasp_pose.rotate_by_quaternion(self.calculate_grasp_orientation(end_effector.front_facing_orientation.to_np()))
+            return grasp_pose
+
         grasp_pose = PoseStamped().from_spatial_type(body.global_pose)
 
-        approach_direction = self.approach_direction
-        rim_direction_index = approach_direction.value[0].value.index(1)
-
-        # TODO the 0 index of the bounding_boxes is temporarily and needs to be better handled
-        rim_offset = body.collision[0].local_frame_bounding_box.dimensions[rim_direction_index] / 2
+        if translate_rim_offset:
+            approach_direction = self.approach_direction
+            rim_direction_index = approach_direction.value[0].value.index(1)
+            # TODO the 0 index of the bounding_boxes is temporarily and needs to be better handled
+            rim_offset = body.collision[0].local_frame_bounding_box.dimensions[rim_direction_index] / 2
 
         grasp_pose.rotate_by_quaternion(self.calculate_grasp_orientation(end_effector.front_facing_orientation.to_np()))
+
         if translate_rim_offset:
-            grasp_pose = translate_pose_along_local_axis(grasp_pose, self.approach_direction.axis.value, -rim_offset)
+            grasp_pose = translate_pose_along_local_axis(grasp_pose, SemVector3.from_iterable(self.approach_direction.axis.value), -rim_offset)
+
 
         return grasp_pose
 
