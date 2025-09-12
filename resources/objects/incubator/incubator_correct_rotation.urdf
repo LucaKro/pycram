@@ -1,0 +1,74 @@
+<?xml version="1.0" ?>
+<robot name="root" version="1.0">
+  <link name="root"/>
+  <joint name="Incubator_body_NakedSingularity_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+    <parent link="root"/>
+    <child link="Incubator_body_NakedSingularity"/>
+  </joint>
+  <link name="Incubator_body_NakedSingularity">
+    <visual name="Incubator_body_NakedSingularity_main_0_681">
+      <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="file://incubator_correct_rotation/meshes/obj/SM_Incubator_body_NakedSingularity_main_0_681.obj" scale="0.009999999776482582 0.010000001639127731 0.010000001639127731"/>
+      </geometry>
+      <material name="Incubator_body_NakedSingularity_main_0_681_material">
+        <color rgba="0.9 0.9 0.9 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="Incubator_door_NakedSingularity_glass_0_joint" type="fixed">
+    <origin xyz="-0.18940961414405066 -0.2427697388897343 0.05881213198502877" rpy="0.0 0.0 0.0"/>
+    <parent link="Incubator_body_NakedSingularity"/>
+    <child link="Incubator_door_NakedSingularity_glass_0"/>
+  </joint>
+  <link name="Incubator_door_NakedSingularity_glass_0">
+    <visual name="Incubator_door_NakedSingularity_glass_0_0">
+      <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="file://incubator_correct_rotation/meshes/obj/SM_Incubator_door_NakedSingularity_glass_0_0.obj" scale="0.009999996982514858 0.009999996051192284 0.009999996051192284"/>
+      </geometry>
+      <material name="Incubator_door_NakedSingularity_glass_0_0_material">
+        <color rgba="0.9 0.9 0.9 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="Incubator_door_NakedSingularity_handle_joint" type="fixed">
+    <origin xyz="-0.011238743042453446 0.452002623974197 -0.009790149856300721" rpy="0.0 0.0 0.0"/>
+    <parent link="Incubator_door_NakedSingularity_glass_0"/>
+    <child link="Incubator_door_NakedSingularity_handle"/>
+  </joint>
+  <link name="Incubator_door_NakedSingularity_handle">
+    <visual name="Incubator_door_NakedSingularity_main_0_009">
+      <origin xyz="2.7755575615628914e-17 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="file://incubator_correct_rotation/meshes/obj/SM_Incubator_door_NakedSingularity_main_0_009.obj" scale="0.009999996982514858 0.009999997913837433 0.009999997913837433"/>
+      </geometry>
+      <material name="Incubator_door_NakedSingularity_main_0_009_material">
+        <color rgba="0.9 0.9 0.9 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="tray_joint" type="fixed">
+    <origin xyz="-0.03805886183547536 -0.0012425754765917063 0.052494100592062054" rpy="0.0 0.0 0.0"/>
+    <parent link="Incubator_body_NakedSingularity"/>
+    <child link="tray"/>
+  </joint>
+  <link name="tray">
+    <visual name="Incubator_body_NakedSingularity_main_0_022">
+      <origin xyz="6.938893903907228e-18 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="file://incubator_correct_rotation/meshes/obj/SM_Incubator_body_NakedSingularity_main_0_022.obj" scale="0.009999999776482582 0.009999996051192284 0.009999996051192284"/>
+      </geometry>
+      <material name="Incubator_body_NakedSingularity_main_0_022_material">
+        <color rgba="0.9 0.9 0.9 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="_materials_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+    <parent link="root"/>
+    <child link="_materials"/>
+  </joint>
+  <link name="_materials"/>
+</robot>
