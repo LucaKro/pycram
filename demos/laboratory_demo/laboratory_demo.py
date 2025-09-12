@@ -190,8 +190,6 @@ place_tray = PlaceActionDescription(
     [Arms.LEFT],
 )
 
-# closing ik error should hopefully be fixed when the handle link etc are rotated correctly in blender
-
 plan = SequentialPlan(
     (apartment_world, None),
     tracy,
@@ -209,5 +207,5 @@ with simulated_robot:
     plan.perform()
 
 viz._stop_publishing()
-# node.destroy_node()
-# rclpy.shutdown()
+node.destroy_node()
+rclpy.shutdown()
