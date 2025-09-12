@@ -15,3 +15,7 @@ repositories:
     type: git
     url: https://github.com/code-iai/iai_tracy.git
     version: ros2-jazzy
+  semantic_world:
+    type: git
+    url: https://github.com/LucaKro/semantic_world.git
+    version: laboratory_demo
