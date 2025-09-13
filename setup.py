@@ -80,7 +80,7 @@ elif os.environ.get('ROS_VERSION') == "2":
 
 else:
     setup(
-        name="pycram-robotics",
+        name="pycram",
         version=get_version(),
         packages=find_packages(where='src'),
         package_dir={"": "src"},  # Optional
