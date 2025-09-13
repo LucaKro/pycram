@@ -8,7 +8,6 @@ from semantic_world.world_description.connections import Connection6DoF, FixedCo
 from semantic_world.world_description.world_entity import Body
 from typing_extensions import Union, Optional, Type, Any, Iterable
 
-from config.action_conf import ActionConfig
 from ...motions.gripper import MoveTCPMotion, MoveGripperMotion
 from ....datastructures.dataclasses import FrozenObject
 from ....datastructures.enums import Arms, GripperState
@@ -19,7 +18,6 @@ from ....has_parameters import has_parameters
 from ....language import SequentialPlan
 from ....robot_description import ViewManager
 from ....robot_plans.actions.base import ActionDescription, record_object_pre_perform
-from ....utils import translate_pose_along_local_axis
 from ....validation.error_checkers import PoseErrorChecker
 
 
