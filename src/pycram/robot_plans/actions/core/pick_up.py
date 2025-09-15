@@ -349,7 +349,7 @@ class PickUpAction(ActionDescription):
         lift_to_pose = PoseStamped().from_spatial_type(
             end_effector.tool_frame.global_pose
         )
-        lift_to_pose.pose.position.z += 0.1
+        lift_to_pose.pose.position.z += 0.05
         SequentialPlan(
             self.context,
             self.robot_view,
