@@ -19,6 +19,8 @@ from ....language import SequentialPlan
 from ....robot_description import ViewManager
 from ....robot_plans.actions.base import ActionDescription, record_object_pre_perform
 from ....validation.error_checkers import PoseErrorChecker
+from ....config.action_conf import ActionConfig
+from ....utils import translate_pose_along_local_axis
 
 
 @has_parameters
@@ -59,45 +61,54 @@ class PlaceAction(ActionDescription):
         self.pre_perform(record_object_pre_perform)
 
     def plan(self) -> None:
-        pre_place_pose = self.world.transform(
-            self.target_location.to_spatial_type(), self.world.root
+
+        end_effector = ViewManager.get_end_effector_view(self.arm, self.robot_view)
+
+        tool_frame_T_object = self.world.compute_forward_kinematics(
+            end_effector.tool_frame, self.object_designator
         )
+
+        location_T_object = self.target_location.to_spatial_type()
+
+        location_T_tool_frame = location_T_object @ tool_frame_T_object.inverse()
+
+        place_pose = self.world.transform(
+            location_T_tool_frame, self.world.root
+        )
+
+        pre_place_pose = self.world.transform(
+            location_T_tool_frame, self.world.root
+        )
+
         pre_place_pose = PoseStamped.from_spatial_type(pre_place_pose)
-        pre_place_pose.position.z += 0.1
+        pre_place_pose.position.z += 0.05
         SequentialPlan(
             self.context,
             self.robot_view,
             MoveTCPMotion(pre_place_pose, self.arm),
-            MoveTCPMotion(self.target_location, self.arm),
+            MoveTCPMotion(PoseStamped.from_spatial_type(place_pose), self.arm),
             MoveGripperMotion(GripperState.OPEN, self.arm),
         ).perform()
 
         # Detaches the object from the robot
-        world_root = self.world.root
+        location_body = self.target_location.frame_id
         obj_transform = self.world.compute_forward_kinematics(
-            world_root, self.object_designator
+            location_body, self.object_designator
         )
         with self.world.modify_world():
             self.world.remove_connection(self.object_designator.parent_connection)
             connection = FixedConnection(
-                world_root,
+                location_body,
                 self.object_designator,
                 _world=self.world,
                 origin_expression=obj_transform,
             )
             self.world.add_connection(connection)
 
-        ee_view = ViewManager().get_end_effector_view(self.arm, self.robot_view)
-
-        # retract_pose = translate_pose_along_local_axis(
-        #     PoseStamped.from_spatial_type(self.object_designator.global_pose),
-        #     ee_view.front_facing_axis.to_np()[:3],
-        #     -ActionConfig.pick_up_prepose_distance,
-        # )
-
-        retract_pose = PoseStamped.from_spatial_type(
-            self.target_location.to_spatial_type()
-            @ TransformationMatrix.from_xyz_rpy(-0.3)
+        retract_pose = translate_pose_along_local_axis(
+            PoseStamped.from_spatial_type(place_pose),
+            end_effector.front_facing_axis,
+            -ActionConfig.pick_up_prepose_distance,
         )
 
         SequentialPlan(

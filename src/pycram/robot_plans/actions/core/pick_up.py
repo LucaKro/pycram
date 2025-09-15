@@ -335,13 +335,17 @@ class PickUpAction(ActionDescription):
 
         # Attach the object to the end effector
         with self.world.modify_world():
+            tool_frame_T_object = self.world.compute_forward_kinematics(
+                end_effector.tool_frame, self.object_designator
+            )
             self.world.remove_connection(self.object_designator.parent_connection)
             self.world.add_connection(
                 FixedConnection(
-                    parent=end_effector.tool_frame, child=self.object_designator
+                    parent=end_effector.tool_frame,
+                    child=self.object_designator,
+                    origin_expression=tool_frame_T_object,
                 )
             )
-
         lift_to_pose = PoseStamped().from_spatial_type(
             end_effector.tool_frame.global_pose
         )

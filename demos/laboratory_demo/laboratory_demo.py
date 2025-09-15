@@ -1,3 +1,12 @@
+import time
+
+from pycram.robot_description import ViewManager
+
+from pycram.robot_plans import PickUpActionDescription
+
+from pycram.language import CodePlan, ParallelPlan
+
+
 def run_environmental_monitoring_demo():
     import os
     import threading
@@ -19,19 +28,14 @@ def run_environmental_monitoring_demo():
     from pycram.robot_plans import (
         ParkArmsActionDescription,
         SetGripperActionDescription,
-        PickUpActionDescription,
         OpenActionDescription,
-        ReachToPickUpActionDescription,
         MoveTCPMotion,
-        PullOutAction,
         PullOutActionDescription,
         CloseActionDescription,
         PlaceActionDescription,
     )
-    from semantic_world.adapters.mesh import STLParser
     from semantic_world.adapters.urdf import URDFParser
     from semantic_world.adapters.viz_marker import VizMarkerPublisher
-    from semantic_world.datastructures.prefixed_name import PrefixedName
     from semantic_world.pipeline.pipeline import (
         Pipeline,
         FillCollisionWithVisual,
@@ -39,7 +43,6 @@ def run_environmental_monitoring_demo():
     )
     from semantic_world.robots import Tracy
     from semantic_world.spatial_types.spatial_types import TransformationMatrix
-    from semantic_world.views.views import Dresser
     from semantic_world.world_description.connections import (
         FixedConnection,
         RevoluteConnection,
@@ -97,6 +100,30 @@ def run_environmental_monitoring_demo():
 
     incubator_pipeline.apply(incubator_world)
 
+    petri_dish_world = URDFParser.from_file(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "resources",
+            "objects",
+            "petri_dish",
+            "petri_dish.urdf",
+        )
+    ).parse()
+
+    incubator_world.merge_world(petri_dish_world,
+                                FixedConnection(
+                                    tray := incubator_world.get_body_by_name("tray"),
+                                    petri_dish_world.root,
+                                    TransformationMatrix.from_xyz_rpy(
+                                        # Petri dish dimensions are ordered incorrectly, i think its a incorrect export from blender
+                                        z=min(petri_dish_world.get_body_by_name("petri_dish").visual[0].local_frame_bounding_box.dimensions) / 2,
+                                        reference_frame=tray
+                                    ),
+                                ),
+                                handle_duplicates=True,)
+
     apartment_world.merge_world(
         incubator_world,
         FixedConnection(
@@ -139,6 +166,8 @@ def run_environmental_monitoring_demo():
     print(len(apartment_world.bodies))
     print(len(apartment_world.bodies_with_enabled_collision))
     park_arms = ParkArmsActionDescription([Arms.BOTH])
+    park_right_arm = ParkArmsActionDescription([Arms.RIGHT])
+    park_left_arm = ParkArmsActionDescription([Arms.LEFT])
     open_left_gripper = SetGripperActionDescription([Arms.LEFT], [GripperState.OPEN])
     open_right_gripper = SetGripperActionDescription([Arms.RIGHT], [GripperState.OPEN])
     close_left_gripper = SetGripperActionDescription([Arms.LEFT], [GripperState.CLOSE])
@@ -147,6 +176,8 @@ def run_environmental_monitoring_demo():
     grasp_description = GraspDescription(
         ApproachDirection.FRONT, VerticalAlignment.NoAlignment, True
     )
+
+    original_tray_pose = apartment_world.get_body_by_name("tray").parent_connection.origin_expression
     pullout = PullOutActionDescription(
         apartment_world.get_body_by_name("tray"), [Arms.LEFT], [grasp_description]
     )
@@ -154,8 +185,9 @@ def run_environmental_monitoring_demo():
     inspect_tray = MoveTCPMotion(
         PoseStamped.from_spatial_type(
             TransformationMatrix.from_xyz_rpy(
-                x=0.75,
-                z=0.2,
+                x=0.6,
+                y=0.15,
+                z=0.7,
                 roll=np.pi / 2,
                 yaw=-np.pi / 2,
                 reference_frame=apartment_world.get_body_by_name("table"),
@@ -179,15 +211,23 @@ def run_environmental_monitoring_demo():
     place_tray = PlaceActionDescription(
         apartment_world.get_body_by_name("tray"),
         PoseStamped.from_spatial_type(
-            TransformationMatrix.from_xyz_rpy(
-                x=1.2,
-                y=0.5,
-                z=0.17,
-                roll=np.pi / 2,
-                reference_frame=apartment_world.get_body_by_name("table"),
-            ),
+            original_tray_pose
         ),
         [Arms.LEFT],
+    )
+
+    petri_lid_grasp_description = GraspDescription(ApproachDirection.BACK, VerticalAlignment.TOP, False)
+
+    dish_T_lid = apartment_world.get_body_by_name("petri_dish_lid").parent_connection.origin_expression
+
+    lid_pickup = PickUpActionDescription(apartment_world.get_body_by_name("petri_dish_lid"), [Arms.RIGHT], [petri_lid_grasp_description])
+
+    place_lid = PlaceActionDescription(
+        apartment_world.get_body_by_name("petri_dish_lid"),
+        PoseStamped.from_spatial_type(
+            dish_T_lid
+        ),
+        [Arms.RIGHT],
     )
 
     plan = SequentialPlan(
@@ -199,7 +239,10 @@ def run_environmental_monitoring_demo():
         open_incubator,
         pullout,
         inspect_tray,
+        lid_pickup,
+        place_lid,
         place_tray,
+        park_left_arm,
         close_incubator,
         park_arms,
     )
