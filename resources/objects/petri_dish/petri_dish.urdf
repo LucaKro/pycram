@@ -1,0 +1,84 @@
+<?xml version="1.0" ?>
+<robot name="root" version="1.0">
+  <link name="root"/>
+  <joint name="scene_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0" rpy="1.570796251296997 0.0 0.0"/>
+    <parent link="root"/>
+    <child link="scene"/>
+  </joint>
+  <link name="scene"/>
+  <joint name="Meshes_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0" rpy="9.094945967408428e-15 0.0 0.0"/>
+    <parent link="scene"/>
+    <child link="Meshes"/>
+  </joint>
+  <link name="Meshes"/>
+  <joint name="Sketchfab_model_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0" rpy="-1.570796251296997 0.0 0.0"/>
+    <parent link="Meshes"/>
+    <child link="Sketchfab_model"/>
+  </joint>
+  <link name="Sketchfab_model"/>
+  <joint name="_1edcb7f910243fba487648da56eb85d_fbx_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0" rpy="1.570796251296997 0.0 0.0"/>
+    <parent link="Sketchfab_model"/>
+    <child link="_1edcb7f910243fba487648da56eb85d_fbx"/>
+  </joint>
+  <link name="_1edcb7f910243fba487648da56eb85d_fbx"/>
+  <joint name="RootNode_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0" rpy="7.105427357601002e-15 0.0 0.0"/>
+    <parent link="_1edcb7f910243fba487648da56eb85d_fbx"/>
+    <child link="RootNode"/>
+  </joint>
+  <link name="RootNode"/>
+  <joint name="pCube3_joint" type="fixed">
+    <origin xyz="0.0 -9.153073011405952e-05 0.00916649430145272" rpy="4.960201645715133e-15 0.0 0.0"/>
+    <parent link="RootNode"/>
+    <child link="pCube3"/>
+  </joint>
+  <link name="pCube3"/>
+  <joint name="petri_dish_joint" type="fixed">
+    <origin xyz="0.0 1.6852948140165492e-12 0.0" rpy="0.0 0.0 0.0"/>
+    <parent link="pCube3"/>
+    <child link="petri_dish"/>
+  </joint>
+  <link name="petri_dish">
+    <visual name="pCube3_petri_dish_0_002">
+      <origin xyz="0.0 6.776263578034403e-20 -3.469446951953614e-18" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="file://petri_dish/meshes/obj/SM_pCube3_petri_dish_0_002.obj" scale="0.014324878342449665 0.01432487741112709 0.01432487741112709"/>
+      </geometry>
+      <material name="pCube3_petri_dish_0_002_material">
+        <color rgba="0.9 0.9 0.9 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="petri_dish_lid_joint" type="fixed">
+    <origin xyz="6.083863778429821e-11 0.007369000644226666 -0.0003461415231608934" rpy="-1.570796251296997 0.0 0.0"/>
+    <parent link="petri_dish"/>
+    <child link="petri_dish_lid"/>
+  </joint>
+  <link name="petri_dish_lid">
+    <visual name="pCube3_petri_dish_0_019">
+      <origin xyz="-1.2924697071141057e-26 3.469446951953614e-18 -2.6020852139652106e-18" rpy="9.804358746615477e-25 0.0 0.0"/>
+      <geometry>
+        <mesh filename="file://petri_dish/meshes/obj/SM_pCube3_petri_dish_0_019.obj" scale="0.014272842556238174 0.010260706767439842 0.01407318003475666"/>
+      </geometry>
+      <material name="pCube3_petri_dish_0_019_material">
+        <color rgba="0.9 0.9 0.9 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="Materials_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0" rpy="7.105427357601002e-15 0.0 0.0"/>
+    <parent link="scene"/>
+    <child link="Materials"/>
+  </joint>
+  <link name="Materials"/>
+  <joint name="_materials_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+    <parent link="root"/>
+    <child link="_materials"/>
+  </joint>
+  <link name="_materials"/>
+</robot>

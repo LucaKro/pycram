@@ -98,6 +98,7 @@ def load_laboratory_world():
 
     incubator_pipeline.apply(incubator_world)
 
+    # "Petri Dish" (https://skfb.ly/ou9qI) by C is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
     petri_dish_world = URDFParser.from_file(
         os.path.join(
             os.path.dirname(__file__),
